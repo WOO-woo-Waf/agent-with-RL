@@ -10,11 +10,14 @@ from agent_rl.domains.narrative import (
     DraftCandidate,
     EvaluationReport,
     EvidencePack,
+    NarrativeSourceAnalysis,
     NarrativeQuery,
     NarrativeTaskState,
     StateChangeProposal,
+    WorkingMemoryContext,
 )
 from agent_rl.narrative_writing.requests import AuthorQuestion, AuthorRequest
+from agent_rl.narrative_writing.requests import ReferenceMaterial
 
 
 class AuthorInteractionPolicy(Protocol):
@@ -24,10 +27,32 @@ class AuthorInteractionPolicy(Protocol):
         ...
 
 
+class NarrativeAnalysisPolicy(Protocol):
+    """Analyzes source/reference material into reusable narrative assets."""
+
+    def analyze(
+        self,
+        references: Sequence[ReferenceMaterial],
+        *,
+        task_id: str,
+        story_id: str,
+        goal: str,
+        writing_direction: str = "",
+    ) -> NarrativeSourceAnalysis:
+        ...
+
+
 class NarrativeRetrievalPolicy(Protocol):
     """Builds task-aware evidence for generation and validation."""
 
     def retrieve(self, state: NarrativeTaskState, query: NarrativeQuery) -> EvidencePack:
+        ...
+
+
+class NarrativeRetrievalEvaluationPolicy(Protocol):
+    """Evaluates retrieved evidence coverage before generation."""
+
+    def evaluate(self, evidence_pack: EvidencePack, query: NarrativeQuery) -> EvaluationReport:
         ...
 
 
@@ -47,6 +72,19 @@ class NarrativePlanningPolicy(Protocol):
         ...
 
 
+class NarrativeContextPolicy(Protocol):
+    """Builds a budgeted context manifest for generation and audit."""
+
+    def build(
+        self,
+        state: NarrativeTaskState,
+        evidence_pack: EvidencePack,
+        plan: ChapterPlan,
+        request: AuthorRequest,
+    ) -> WorkingMemoryContext:
+        ...
+
+
 class NarrativeWriterPolicy(Protocol):
     """Generates a draft from plan, state, and evidence."""
 
@@ -55,6 +93,7 @@ class NarrativeWriterPolicy(Protocol):
         state: NarrativeTaskState,
         plan: ChapterPlan,
         evidence_pack: EvidencePack,
+        working_context: WorkingMemoryContext | None = None,
     ) -> DraftCandidate:
         ...
 

@@ -35,6 +35,8 @@ def test_file_author_request_bootstraps_retrievable_source_memory(tmp_path) -> N
     state = build_initial_state(request)
 
     assert state.source_documents
+    assert state.source_analyses
+    assert state.source_chunks
     assert len(state.memory_atoms) == 2
     assert all(memory.memory_type == "source_excerpt" for memory in state.memory_atoms)
     assert any("密信" in memory.text for memory in state.memory_atoms)

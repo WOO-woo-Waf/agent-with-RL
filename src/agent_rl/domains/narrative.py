@@ -43,6 +43,41 @@ class SourceDocument:
 
 
 @dataclass
+class SourceChunk:
+    """Chunk of source text prepared for analysis, retrieval, and evidence indexing."""
+
+    chunk_id: str
+    document_id: str
+    source_type: str
+    text: str
+    chapter_index: int | None = None
+    chunk_index: int = 0
+    start_offset: int = 0
+    end_offset: int = 0
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class NarrativeSourceAnalysis:
+    """Rule or LLM analysis output derived from source/reference material."""
+
+    analysis_id: str
+    task_id: str
+    story_id: str
+    source_documents: list[SourceDocument] = field(default_factory=list)
+    source_chunks: list[SourceChunk] = field(default_factory=list)
+    characters: list["CharacterCard"] = field(default_factory=list)
+    events: list["NarrativeEvent"] = field(default_factory=list)
+    plot_threads: list["PlotThreadState"] = field(default_factory=list)
+    world_rules: list[WorldRule] = field(default_factory=list)
+    style_profile: "StyleProfile | None" = None
+    style_snippets: list["StyleSnippet"] = field(default_factory=list)
+    memory_atoms: list["MemoryAtom"] = field(default_factory=list)
+    coverage: dict[str, float] = field(default_factory=dict)
+    trace: list[dict[str, Any]] = field(default_factory=list)
+
+
+@dataclass
 class WorldRule:
     """Canonical or candidate world constraint used by generation and validation."""
 
@@ -389,6 +424,63 @@ class EvidencePack:
 
 
 @dataclass
+class PromptContextSection:
+    """Budgeted context section prepared for a writer, planner, or evaluator."""
+
+    section_id: str
+    label: str
+    source_type: str
+    text: str
+    priority: int = 50
+    order: int = 100
+    budget_chars: int = 2000
+    visible_to_author: bool = True
+    visible_to_model: bool = True
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def rendered_text(self) -> str:
+        if self.budget_chars <= 0 or len(self.text) <= self.budget_chars:
+            return self.text
+        return self.text[: self.budget_chars].rstrip()
+
+
+@dataclass
+class WorkingMemoryContext:
+    """Context manifest assembled from state, retrieved evidence, and plan."""
+
+    context_id: str
+    evidence_pack_id: str
+    sections: list[PromptContextSection] = field(default_factory=list)
+    char_budget: int = 12000
+    token_budget: int = 0
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def model_sections(self) -> list[PromptContextSection]:
+        return [section for section in self.sections if section.visible_to_model]
+
+    def render_for_model(self) -> str:
+        rendered: list[str] = []
+        used_chars = 0
+        for section in sorted(self.model_sections(), key=lambda item: (item.order, -item.priority, item.section_id)):
+            text = section.rendered_text
+            if not text:
+                continue
+            remaining = self.char_budget - used_chars
+            if remaining <= 0:
+                break
+            clipped = text[:remaining].rstrip()
+            if clipped:
+                rendered.append(f"## {section.label}\n{clipped}")
+                used_chars += len(clipped)
+        return "\n\n".join(rendered)
+
+    @property
+    def estimated_tokens(self) -> int:
+        return max((len(self.render_for_model()) + 3) // 4, 0)
+
+
+@dataclass
 class ChapterPlan:
     """Runtime plan for one continuation execution."""
 
@@ -468,6 +560,8 @@ class NarrativeTaskState:
     story_id: str
     goal: str
     source_documents: list[SourceDocument] = field(default_factory=list)
+    source_chunks: list[SourceChunk] = field(default_factory=list)
+    source_analyses: list[NarrativeSourceAnalysis] = field(default_factory=list)
     world_rules: list[WorldRule] = field(default_factory=list)
     locations: list[LocationState] = field(default_factory=list)
     objects: list[ObjectState] = field(default_factory=list)
@@ -486,6 +580,7 @@ class NarrativeTaskState:
     memory_atoms: list[MemoryAtom] = field(default_factory=list)
     compressed_memory: list[CompressedMemoryBlock] = field(default_factory=list)
     evidence_pack: EvidencePack | None = None
+    working_context: WorkingMemoryContext | None = None
     chapter_plan: ChapterPlan | None = None
     draft: DraftCandidate | None = None
     pending_changes: list[StateChangeProposal] = field(default_factory=list)

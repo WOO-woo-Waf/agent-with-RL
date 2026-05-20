@@ -476,6 +476,7 @@ reward =
 `narrative.py` 把小说场景中的核心对象类化：
 
 - source/world/character/plot/scene/style/author/memory/retrieval/generation/evaluation/task state。
+- `SourceChunk` 和 `NarrativeSourceAnalysis` 用于承载“先分析参考小说，再进入续写”的分析资产。
 
 `narrative_writing/` 把这些对象组织成可运行的 Agent，并按 OOAD 分层：
 
@@ -485,6 +486,7 @@ narrative_writing/
   ingestion.py     # 本地参考小说 txt 读取与 AuthorRequest 构造
   ports.py         # 可替换策略端口
   bootstrap.py     # 从作者输入和参考材料构造初始状态
+  prompting/       # prompt profile / global prompt / task prompt 管理
   policies/        # interaction/retrieval/planning/writing/extraction/evaluation/memory
   scenario.py      # NarrativeScenarioAdapter
   agent.py         # NarrativeWritingAgent 应用服务
@@ -495,9 +497,12 @@ narrative_writing/
 ```text
 AuthorRequest
 -> BasicAuthorInteractionPolicy
+-> RuleBasedSourceAnalysisPolicy
 -> NarrativeScenarioAdapter
--> KeywordNarrativeRetrievalPolicy
+-> CompositeNarrativeRetrievalPolicy
+-> BasicRetrievalEvaluationPolicy
 -> RuleBasedPlanningPolicy
+-> BudgetedNarrativeContextPolicy
 -> TemplateNarrativeWriterPolicy
 -> RuleBasedExtractorPolicy
 -> CompositeNarrativeEvaluatorPolicy
@@ -507,7 +512,15 @@ AuthorRequest
 
 这套实现先用规则和模板，目的是让概念闭环可运行。后续可逐步替换为 LLM planner、mem0/Letta memory、LangGraph runtime、OpenAI Agents SDK tools/guardrails，而不改变核心领域模型和端口。
 
-参考小说摄入已经作为核心包能力存在：`narrative_writing/ingestion.py` 支持读取 UTF-8/GB18030 文本文件或目录，把它们转换为 `ReferenceMaterial`。`bootstrap.py` 会把参考文本构造成 `SourceDocument`、`StyleSnippet` 和初始 `MemoryAtom`，`KeywordNarrativeRetrievalPolicy` 会把 canonical source memory 纳入 `EvidencePack`。这不是最终向量数据库实现，但接口位置已经对齐真实 RAG：后续可把文件切分、embedding、reranker 和持久化索引替换进 retrieval policy，而不用改 `NarrativeWritingAgent`。
+参考小说摄入已经作为核心包能力存在：`narrative_writing/ingestion.py` 支持读取 UTF-8/GB18030 文本文件或目录，把它们转换为 `ReferenceMaterial`。`RuleBasedSourceAnalysisPolicy` 会把参考文本构造成 `SourceDocument`、`SourceChunk`、`NarrativeEvent`、`StyleSnippet` 和初始 `MemoryAtom`，并把分析覆盖率写入 `NarrativeSourceAnalysis.coverage`。`CompositeNarrativeRetrievalPolicy` 会按作者计划、人物、剧情/记忆、世界、风格、source chunk、scene case 分通道召回，并根据 source_type 权重和配额融合到 `EvidencePack`。这不是最终向量数据库实现，但接口位置已经对齐真实 RAG：后续可把 embedding、reranker 和持久化索引替换进 retrieval policy，而不用改 `NarrativeWritingAgent`。
+
+上下文管理已经进入核心包：`BudgetedNarrativeContextPolicy` 会把作者请求、章节计划、作者约束、剧情证据、人物证据、世界规则、风格参照和状态摘要装配成 `WorkingMemoryContext`。这一步位于检索和写作之间，目的是把原项目重视的上下文预算、顺序、优先级和可审计性前移到领域模型，而不是让 writer 临时拼字符串。
+
+提示词管理已经有轻量文件化实现：`narrative_writing/prompting/` 提供 `PromptRegistry` 和 `PromptComposer`，默认包含 `global/default.md`、`profiles/default.yaml` 和 `draft_generation`、`state_extraction`、`source_analysis`、`author_planning` 任务提示词。当前 template writer 还不调用真实 LLM，但 LLM writer/extractor 可以直接复用这个 prompt 边界。
+
+LLM 接入已经有包级基础设施边界：`agent_rl.llm` 定义 `ChatModelClient`、`JsonBlobParser`、`OpenAICompatibleChatClient`、审计日志和 usage 记录。`LLMNarrativeWriterPolicy` 与 `LLMNarrativeExtractorPolicy` 是小说场景的使用方，通过 prompt composer 和 working context 调用模型，要求 JSON 输出；模型调用、JSON 解析或 schema 校验失败时，会分别回退到 `TemplateNarrativeWriterPolicy` 和 `RuleBasedExtractorPolicy`。这让真实模型能力可以进入写作链路，同时测试和本地 demo 不依赖 API key。
+
+模型调用适配器不是小说场景私有能力，而是包级 `agent_rl.llm` 基础设施。它已经吸收旧项目的审计思路：`OpenAICompatibleChatClient` 从 `LLM_API_BASE`、`LLM_API_KEY`、`LLM_MODEL` 等环境变量读取配置，支持 `LLM_API_BASES` / `LLM_API_KEYS` 多 endpoint 轮换，JSON mode contract、失败重试、请求开始/成功/失败事件、prompt metadata、token usage 都写入 JSONL。默认日志路径在 `artifacts/llm/` 下，不进入 git。小说写作只是通过 `LLMNarrativeWriterPolicy` / `LLMNarrativeExtractorPolicy` 使用这个包级模块。
 
 ### 使用方式
 
@@ -594,3 +607,7 @@ $env:PYTHONPATH="src"; python -m agent_rl.examples.narrative_demo
 要把它做成一个可插拔的 Narrative Agent Scenario：
 状态可信、证据可追溯、记忆可压缩、动作可评估、提交可回滚、策略可学习。
 ```
+
+## Follow-up Design
+
+- `NARRATIVE_ENGINE_ABSORPTION_PLAN_2026-05-20.md`：对比原 `narrative-state-engine` 与当前 `agent-with-RL` 的运行链路，并定义分析、RAG、提示词、上下文管理、并行 LLM 调用如何吸收到当前 Agent 场景中。

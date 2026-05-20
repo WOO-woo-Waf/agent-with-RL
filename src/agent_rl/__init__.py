@@ -25,6 +25,13 @@ from agent_rl.core import (
     SequencePolicy,
 )
 from agent_rl.domains.narrative import NarrativeTaskState
+from agent_rl.llm import (
+    ChatModelClient,
+    JsonBlobParser,
+    OpenAICompatibleChatClient,
+    OpenAICompatibleConfig,
+    has_llm_configuration,
+)
 from agent_rl.narrative_writing import (
     AuthorRequest,
     NarrativeRunResult,
@@ -42,6 +49,7 @@ __all__ = [
     "AgentRuntime",
     "AgentState",
     "AuthorRequest",
+    "ChatModelClient",
     "Decision",
     "Environment",
     "Evaluator",
@@ -49,6 +57,7 @@ __all__ = [
     "Guardrail",
     "GreedyActionPolicy",
     "InMemoryStore",
+    "JsonBlobParser",
     "MemoryStore",
     "MultiAgentCoordinator",
     "NarrativeTaskState",
@@ -56,6 +65,8 @@ __all__ = [
     "NarrativeScenarioAdapter",
     "NarrativeWritingAgent",
     "Observation",
+    "OpenAICompatibleChatClient",
+    "OpenAICompatibleConfig",
     "PlanAndExecuteAgent",
     "Policy",
     "ReActAgent",
@@ -67,6 +78,7 @@ __all__ = [
     "TrajectoryStep",
     "Transition",
     "build_author_request_from_files",
+    "has_llm_configuration",
     "load_reference_directory",
     "load_reference_file",
     "read_text_file",

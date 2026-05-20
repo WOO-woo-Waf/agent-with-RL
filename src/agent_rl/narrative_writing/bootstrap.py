@@ -16,19 +16,33 @@ from agent_rl.domains.narrative import (
     WorldRule,
 )
 from agent_rl.narrative_writing.requests import AuthorRequest, ReferenceMaterial
+from agent_rl.narrative_writing.ports import NarrativeAnalysisPolicy
+from agent_rl.narrative_writing.policies.analysis import RuleBasedSourceAnalysisPolicy
 from agent_rl.narrative_writing.utils import candidate_names, is_negative_constraint, new_id, split_author_items, split_paragraphs
 
 
-def build_initial_state(request: AuthorRequest) -> NarrativeTaskState:
+def build_initial_state(request: AuthorRequest, analysis_policy: NarrativeAnalysisPolicy | None = None) -> NarrativeTaskState:
     state = NarrativeTaskState(task_id=request.task_id, story_id=request.story_id, goal=request.request)
-    state.source_documents.extend(build_source_documents(request.references))
+    active_analysis_policy = analysis_policy or RuleBasedSourceAnalysisPolicy()
+    source_analysis = active_analysis_policy.analyze(
+        request.references,
+        task_id=request.task_id,
+        story_id=request.story_id,
+        goal=request.request,
+        writing_direction=request.writing_direction,
+    )
+    state.source_analyses.append(source_analysis)
+    state.source_documents.extend(source_analysis.source_documents)
+    state.source_chunks.extend(source_analysis.source_chunks)
     state.author_constraints.extend(build_author_constraints(request.constraints))
-    state.characters.extend(infer_characters(request.references))
-    state.plot_threads.extend(infer_plot_threads(request))
-    state.world_rules.extend(infer_world_rules(request.references))
-    state.style_profile = infer_style_profile(request.references)
-    state.style_snippets.extend(infer_style_snippets(request.references))
-    state.memory_atoms.extend(infer_reference_memory(request.references))
+    state.characters.extend(source_analysis.characters)
+    state.events.extend(source_analysis.events)
+    state.plot_threads.extend(source_analysis.plot_threads or infer_plot_threads(request))
+    state.world_rules.extend(source_analysis.world_rules)
+    state.style_profile = source_analysis.style_profile
+    state.style_snippets.extend(source_analysis.style_snippets)
+    state.memory_atoms.extend(source_analysis.memory_atoms)
+    state.metadata["source_analysis_coverage"] = dict(source_analysis.coverage)
     state.metadata["writing_direction"] = request.writing_direction
     return state
 

@@ -14,22 +14,29 @@ from agent_rl.domains.narrative import (
     NarrativeQuery,
     NarrativeTaskState,
     StateChangeProposal,
+    WorkingMemoryContext,
 )
 from agent_rl.narrative_writing.bootstrap import build_initial_state
 from agent_rl.narrative_writing.policies import (
+    BudgetedNarrativeContextPolicy,
+    BasicRetrievalEvaluationPolicy,
     CompositeNarrativeEvaluatorPolicy,
-    KeywordNarrativeRetrievalPolicy,
+    CompositeNarrativeRetrievalPolicy,
     RuleBasedExtractorPolicy,
     RuleBasedPlanningPolicy,
+    RuleBasedSourceAnalysisPolicy,
     SimpleNarrativeMemoryPolicy,
     TemplateNarrativeWriterPolicy,
 )
 from agent_rl.narrative_writing.ports import (
     NarrativeEvaluatorPolicy,
     NarrativeExtractorPolicy,
+    NarrativeContextPolicy,
+    NarrativeAnalysisPolicy,
     NarrativeMemoryPolicy,
     NarrativePlanningPolicy,
     NarrativeRetrievalPolicy,
+    NarrativeRetrievalEvaluationPolicy,
     NarrativeWriterPolicy,
 )
 from agent_rl.narrative_writing.requests import AuthorRequest
@@ -43,22 +50,28 @@ class NarrativeScenarioAdapter:
 
     def __init__(
         self,
+        analysis_policy: NarrativeAnalysisPolicy | None = None,
         retrieval_policy: NarrativeRetrievalPolicy | None = None,
+        retrieval_evaluation_policy: NarrativeRetrievalEvaluationPolicy | None = None,
         planning_policy: NarrativePlanningPolicy | None = None,
         writer_policy: NarrativeWriterPolicy | None = None,
         extractor_policy: NarrativeExtractorPolicy | None = None,
         evaluator_policy: NarrativeEvaluatorPolicy | None = None,
         memory_policy: NarrativeMemoryPolicy | None = None,
+        context_policy: NarrativeContextPolicy | None = None,
     ) -> None:
-        self.retrieval_policy = retrieval_policy or KeywordNarrativeRetrievalPolicy()
+        self.analysis_policy = analysis_policy or RuleBasedSourceAnalysisPolicy()
+        self.retrieval_policy = retrieval_policy or CompositeNarrativeRetrievalPolicy()
+        self.retrieval_evaluation_policy = retrieval_evaluation_policy or BasicRetrievalEvaluationPolicy()
         self.planning_policy = planning_policy or RuleBasedPlanningPolicy()
+        self.context_policy = context_policy or BudgetedNarrativeContextPolicy()
         self.writer_policy = writer_policy or TemplateNarrativeWriterPolicy()
         self.extractor_policy = extractor_policy or RuleBasedExtractorPolicy()
         self.evaluator_policy = evaluator_policy or CompositeNarrativeEvaluatorPolicy()
         self.memory_policy = memory_policy or SimpleNarrativeMemoryPolicy()
 
     def build_initial_state(self, request: AuthorRequest) -> NarrativeTaskState:
-        return build_initial_state(request)
+        return build_initial_state(request, self.analysis_policy)
 
     def build_observation(self, state: NarrativeTaskState) -> Observation:
         return Observation(
@@ -67,6 +80,8 @@ class NarrativeScenarioAdapter:
                 "story_id": state.story_id,
                 "goal": state.goal,
                 "state_version_no": state.state_version_no,
+                "source_chunks": len(state.source_chunks),
+                "source_analyses": len(state.source_analyses),
                 "characters": [character.name for character in state.characters],
                 "plot_threads": [thread.name for thread in state.plot_threads],
                 "author_constraints": [constraint.text for constraint in state.author_constraints],
@@ -80,6 +95,7 @@ class NarrativeScenarioAdapter:
         return [
             Action("retrieve_context", kind="tool"),
             Action("propose_plan", kind="tool"),
+            Action("build_working_context", kind="tool"),
             Action("generate_draft", kind="tool"),
             Action("extract_changes", kind="tool"),
             Action("evaluate", kind="tool"),
@@ -109,12 +125,29 @@ class NarrativeScenarioAdapter:
                 "plot_thread",
                 "world_rule",
                 "style_snippet",
+                "source_chunk",
             ],
         )
 
     def retrieve_context(self, state: NarrativeTaskState, query: NarrativeQuery) -> EvidencePack:
         pack = self.retrieval_policy.retrieve(state, query)
         state.evidence_pack = pack
+        report = self.retrieval_evaluation_policy.evaluate(pack, query)
+        state.metadata["retrieval_evaluation_report"] = {
+            "report_id": report.report_id,
+            "status": report.status,
+            "overall_score": report.overall_score,
+            "metrics": dict(report.metrics),
+            "issues": [issue.summary for issue in report.issues],
+        }
+        pack.retrieval_trace.append(
+            {
+                "policy": self.retrieval_evaluation_policy.__class__.__name__,
+                "status": report.status,
+                "overall_score": report.overall_score,
+                "metrics": dict(report.metrics),
+            }
+        )
         return pack
 
     def propose_plan(self, state: NarrativeTaskState, request: AuthorRequest) -> ChapterBlueprint:
@@ -134,8 +167,25 @@ class NarrativeScenarioAdapter:
         state.chapter_plan = plan
         return plan
 
-    def generate_draft(self, state: NarrativeTaskState, plan: ChapterPlan, evidence_pack: EvidencePack) -> DraftCandidate:
-        draft = self.writer_policy.generate(state, plan, evidence_pack)
+    def build_working_context(
+        self,
+        state: NarrativeTaskState,
+        plan: ChapterPlan,
+        evidence_pack: EvidencePack,
+        request: AuthorRequest,
+    ) -> WorkingMemoryContext:
+        context = self.context_policy.build(state, evidence_pack, plan, request)
+        state.working_context = context
+        return context
+
+    def generate_draft(
+        self,
+        state: NarrativeTaskState,
+        plan: ChapterPlan,
+        evidence_pack: EvidencePack,
+        working_context: WorkingMemoryContext | None = None,
+    ) -> DraftCandidate:
+        draft = self.writer_policy.generate(state, plan, evidence_pack, working_context)
         state.draft = draft
         return draft
 

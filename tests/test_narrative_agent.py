@@ -50,3 +50,5 @@ def test_narrative_agent_runs_and_commits_after_confirmation() -> None:
     assert result.state.state_version_no == 1
     assert result.state.memory_atoms
     assert result.state.compressed_memory
+    assert result.state.working_context is not None
+    assert result.state.metadata["retrieval_evaluation_report"]["overall_score"] > 0

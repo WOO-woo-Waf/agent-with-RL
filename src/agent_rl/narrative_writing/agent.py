@@ -73,10 +73,21 @@ class NarrativeWritingAgent:
         )
 
         plan = self.scenario.build_chapter_plan(working_state, blueprint, pack, request)
-        draft = self.scenario.generate_draft(working_state, plan, pack)
+        working_context = self.scenario.build_working_context(working_state, plan, pack, request)
         _append_step(
             trajectory,
             2,
+            observation,
+            Action("build_working_context", payload={"context_id": working_context.context_id}, kind="tool"),
+            Reward(0.1, {"context_sections": float(len(working_context.sections))}),
+            self.scenario.build_observation(working_state),
+            "assemble budgeted working context from plan and evidence",
+        )
+
+        draft = self.scenario.generate_draft(working_state, plan, pack, working_context)
+        _append_step(
+            trajectory,
+            3,
             observation,
             Action("generate_draft", payload={"draft_id": draft.draft_id}, kind="tool"),
             Reward(0.2, {"draft_created": 1.0}),
@@ -89,7 +100,7 @@ class NarrativeWritingAgent:
         committed = self.scenario.commit_or_rollback(working_state, changes, reports)
         _append_step(
             trajectory,
-            3,
+            4,
             observation,
             Action("commit_or_rollback", payload={"committed": committed}, kind="tool"),
             _reward_from_reports(reports, committed),

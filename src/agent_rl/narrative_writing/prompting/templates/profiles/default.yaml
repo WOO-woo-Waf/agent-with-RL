@@ -1,0 +1,9 @@
+id: default
+version: 1
+global_prompt: default
+reasoning_mode: internal
+bindings:
+  draft_generation: draft_generation
+  state_extraction: state_extraction
+  source_analysis: source_analysis
+  author_planning: author_planning
