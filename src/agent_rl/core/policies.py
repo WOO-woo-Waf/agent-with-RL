@@ -6,7 +6,7 @@ from collections.abc import Callable
 from uuid import uuid4
 from typing import Sequence
 
-from agent_rl.concepts import Action, AgentState, Decision
+from agent_rl.core.concepts import Action, AgentState, Decision
 
 
 class SequencePolicy:

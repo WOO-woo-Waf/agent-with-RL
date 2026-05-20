@@ -688,8 +688,11 @@ Agent 的记忆至少分为：
 
 当前已整合：
 
-- `src/agent_rl/narrative.py`：小说场景领域模型。
+- `src/agent_rl/core/`：通用 Agent/RL 核心抽象、runtime、通用 policy 和架构 helper。
+- `src/agent_rl/domains/narrative.py`：小说场景领域模型。
+- `src/agent_rl/narrative_writing/`：可运行的小说写作 Agent，实现作者交互、检索、规划、生成、抽取、评估、提交和记忆压缩闭环，并按 OOAD 分成 DTO、端口、策略、场景适配器和应用服务。
 - `docs/design-architecture/narrative-agent-system/NARRATIVE_AGENT_DOMAIN_MODEL_2026-05-20.md`：小说 Agent 场景建模与改进设计。
+- `docs/design-architecture/core-package-layering/AGENT_RL_CORE_LAYERING_DESIGN_2026-05-20.md`：核心包分层规范。
 
 小说场景的目标不是“让模型多写字”，而是建立一个可控创作环境：
 

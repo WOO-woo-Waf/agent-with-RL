@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from agent_rl.concepts import (
+from agent_rl.core.concepts import (
     AgentState,
     Environment,
     Goal,
@@ -13,7 +13,7 @@ from agent_rl.concepts import (
     TrajectoryStep,
     utc_now,
 )
-from agent_rl.memory import InMemoryStore
+from agent_rl.core.memory import InMemoryStore
 
 
 class AgentRuntime:

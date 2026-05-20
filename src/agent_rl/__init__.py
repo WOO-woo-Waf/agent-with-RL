@@ -1,8 +1,8 @@
 """Learning-oriented Agent/RL domain model."""
 
-from agent_rl.architectures import MultiAgentCoordinator, PlanAndExecuteAgent, ReActAgent
-from agent_rl.concepts import (
+from agent_rl.core import (
     Action,
+    AgentRuntime,
     AgentState,
     Decision,
     Environment,
@@ -17,16 +17,31 @@ from agent_rl.concepts import (
     Trajectory,
     TrajectoryStep,
     Transition,
+    GreedyActionPolicy,
+    InMemoryStore,
+    MultiAgentCoordinator,
+    PlanAndExecuteAgent,
+    ReActAgent,
+    SequencePolicy,
 )
-from agent_rl.memory import InMemoryStore
-from agent_rl.policies import GreedyActionPolicy, SequencePolicy
-from agent_rl.runtime import AgentRuntime
-from agent_rl.narrative import NarrativeTaskState
+from agent_rl.domains.narrative import NarrativeTaskState
+from agent_rl.narrative_writing import (
+    AuthorRequest,
+    NarrativeRunResult,
+    NarrativeScenarioAdapter,
+    NarrativeWritingAgent,
+    ReferenceMaterial,
+    build_author_request_from_files,
+    load_reference_directory,
+    load_reference_file,
+    read_text_file,
+)
 
 __all__ = [
     "Action",
     "AgentRuntime",
     "AgentState",
+    "AuthorRequest",
     "Decision",
     "Environment",
     "Evaluator",
@@ -37,14 +52,22 @@ __all__ = [
     "MemoryStore",
     "MultiAgentCoordinator",
     "NarrativeTaskState",
+    "NarrativeRunResult",
+    "NarrativeScenarioAdapter",
+    "NarrativeWritingAgent",
     "Observation",
     "PlanAndExecuteAgent",
     "Policy",
     "ReActAgent",
     "Reward",
+    "ReferenceMaterial",
     "SequencePolicy",
     "Tool",
     "Trajectory",
     "TrajectoryStep",
     "Transition",
+    "build_author_request_from_files",
+    "load_reference_directory",
+    "load_reference_file",
+    "read_text_file",
 ]

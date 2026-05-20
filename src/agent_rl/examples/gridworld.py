@@ -5,8 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Sequence
 
-from agent_rl.concepts import Action, AgentState, Goal, Observation, Reward, Transition
-from agent_rl.runtime import AgentRuntime
+from agent_rl.core import Action, AgentRuntime, AgentState, Goal, Observation, Reward, Transition
 
 
 Position = tuple[int, int]
@@ -97,7 +96,7 @@ class GreedyGridPolicy:
             action = Action("up")
         else:
             action = Action("stop", kind="control")
-        from agent_rl.concepts import Decision
+        from agent_rl.core import Decision
 
         return Decision(action=action, rationale="reduce Manhattan distance")
 

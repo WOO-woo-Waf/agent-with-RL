@@ -11,6 +11,8 @@
 快速验证：
 
 ```powershell
+conda env create -f environment.yml
+conda activate agent-with-rl
 python -m pytest
 ```
 
@@ -18,11 +20,28 @@ python -m pytest
 
 ```powershell
 $env:PYTHONPATH="src"; python -m agent_rl.examples.gridworld
+$env:PYTHONPATH="src"; python -m agent_rl.examples.narrative_demo
+```
+
+小说写作 Agent 支持把本地参考小说文本读入为 `ReferenceMaterial`，再进入初始状态、RAG 证据和记忆层：
+
+```python
+from agent_rl.narrative_writing import NarrativeWritingAgent, build_author_request_from_files
+
+request = build_author_request_from_files(
+    request="规划并续写下一章",
+    reference_paths=("data/my-novel/chapter-01.txt",),
+    writing_direction="下一章继续推进密信线索，不要让主角立刻原谅对方",
+    constraints=("不要让主角立刻原谅对方",),
+    confirm_plan=True,
+)
+result = NarrativeWritingAgent().run(request)
 ```
 
 设计文档：
 
 - `docs/design-architecture/agent-rl-ooad/AGENT_RL_OOAD_DESIGN_2026-05-20.md`
+- `docs/design-architecture/core-package-layering/AGENT_RL_CORE_LAYERING_DESIGN_2026-05-20.md`
 - `docs/design-architecture/narrative-agent-system/NARRATIVE_AGENT_DOMAIN_MODEL_2026-05-20.md`
 
 研究笔记：

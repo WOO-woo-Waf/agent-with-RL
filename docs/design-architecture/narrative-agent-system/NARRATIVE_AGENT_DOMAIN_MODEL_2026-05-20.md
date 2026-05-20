@@ -63,7 +63,7 @@ Agent Runtime 只负责循环、工具调度、轨迹、guardrail、人工确认
 
 ## Domain Model
 
-当前代码化模型见 `src/agent_rl/narrative.py`。它不是替代 `narrative-state-engine` 的全部代码，而是把可迁移的领域概念先统一下来。
+当前代码化模型见 `src/agent_rl/domains/narrative.py`。它不是替代 `narrative-state-engine` 的全部代码，而是把可迁移的领域概念先统一下来。
 
 ### L0 Source Layer
 
@@ -467,15 +467,113 @@ reward =
 
 ## Code Integration
 
-本项目已新增：
+本项目已实现：
 
-- `src/agent_rl/narrative.py`
+- `src/agent_rl/domains/narrative.py`
+- `src/agent_rl/narrative_writing/`
+- `src/agent_rl/examples/narrative_demo.py`
 
-它把小说场景中的核心对象类化：
+`narrative.py` 把小说场景中的核心对象类化：
 
 - source/world/character/plot/scene/style/author/memory/retrieval/generation/evaluation/task state。
 
-这不是最终业务实现，而是后续所有小说 Agent 实验的共同语言。
+`narrative_writing/` 把这些对象组织成可运行的 Agent，并按 OOAD 分层：
+
+```text
+narrative_writing/
+  requests.py      # AuthorRequest / ReferenceMaterial / result DTO
+  ingestion.py     # 本地参考小说 txt 读取与 AuthorRequest 构造
+  ports.py         # 可替换策略端口
+  bootstrap.py     # 从作者输入和参考材料构造初始状态
+  policies/        # interaction/retrieval/planning/writing/extraction/evaluation/memory
+  scenario.py      # NarrativeScenarioAdapter
+  agent.py         # NarrativeWritingAgent 应用服务
+```
+
+运行链路：
+
+```text
+AuthorRequest
+-> BasicAuthorInteractionPolicy
+-> NarrativeScenarioAdapter
+-> KeywordNarrativeRetrievalPolicy
+-> RuleBasedPlanningPolicy
+-> TemplateNarrativeWriterPolicy
+-> RuleBasedExtractorPolicy
+-> CompositeNarrativeEvaluatorPolicy
+-> SimpleNarrativeMemoryPolicy
+-> NarrativeRunResult
+```
+
+这套实现先用规则和模板，目的是让概念闭环可运行。后续可逐步替换为 LLM planner、mem0/Letta memory、LangGraph runtime、OpenAI Agents SDK tools/guardrails，而不改变核心领域模型和端口。
+
+参考小说摄入已经作为核心包能力存在：`narrative_writing/ingestion.py` 支持读取 UTF-8/GB18030 文本文件或目录，把它们转换为 `ReferenceMaterial`。`bootstrap.py` 会把参考文本构造成 `SourceDocument`、`StyleSnippet` 和初始 `MemoryAtom`，`KeywordNarrativeRetrievalPolicy` 会把 canonical source memory 纳入 `EvidencePack`。这不是最终向量数据库实现，但接口位置已经对齐真实 RAG：后续可把文件切分、embedding、reranker 和持久化索引替换进 retrieval policy，而不用改 `NarrativeWritingAgent`。
+
+### 使用方式
+
+第一轮不确认计划，只让 Agent 问问题或给出章节蓝图：
+
+```python
+from agent_rl.narrative_writing import AuthorRequest, NarrativeWritingAgent, ReferenceMaterial
+
+agent = NarrativeWritingAgent()
+result = agent.run(
+    AuthorRequest(
+        request="规划并续写下一章",
+        references=(ReferenceMaterial(title="参考", text="原文片段..."),),
+        writing_direction="下一章必须找到密信线索；不要让主角立刻原谅对方",
+        constraints=("不要让主角立刻原谅对方",),
+        confirm_plan=False,
+    )
+)
+```
+
+从本地参考小说文件构造请求：
+
+```python
+from agent_rl.narrative_writing import NarrativeWritingAgent, build_author_request_from_files
+
+request = build_author_request_from_files(
+    request="规划并续写下一章",
+    reference_paths=("data/my-novel/chapter-01.txt", "data/my-novel/chapter-02.txt"),
+    writing_direction="下一章继续推进密信线索，不要让主角立刻原谅对方",
+    constraints=("不要让主角立刻原谅对方",),
+    confirm_plan=True,
+)
+result = NarrativeWritingAgent().run(request)
+```
+
+作者确认后重新运行：
+
+```python
+result = agent.run(
+    AuthorRequest(
+        request="规划并续写下一章",
+        references=(ReferenceMaterial(title="参考", text="原文片段..."),),
+        writing_direction="下一章必须找到密信线索；不要让主角立刻原谅对方",
+        constraints=("不要让主角立刻原谅对方",),
+        confirm_plan=True,
+    )
+)
+```
+
+命令行 demo：
+
+```powershell
+$env:PYTHONPATH="src"; python -m agent_rl.examples.narrative_demo
+```
+
+### 当前交互边界
+
+这不是前端实现，但已经支持用户操作语义：
+
+- 缺少参考小说或写作方向时，返回 `AuthorQuestion[]`。
+- 可以从本地参考小说 txt 文件或目录读取初始参考材料。
+- 初始参考材料会进入 `SourceDocument`、`StyleSnippet`、`MemoryAtom`，并在检索阶段进入 `EvidencePack`。
+- 生成章节蓝图后，返回 `requires_confirmation=True`。
+- 作者确认后才执行草稿生成和 canonical state 提交。
+- 评估报告出现 blocker 时回滚，不写入长期记忆。
+- 成功提交后写入 `MemoryAtom` 和 `CompressedMemoryBlock`。
 
 ## Verification Plan
 

@@ -1,0 +1,4 @@
+# Core package currently has no mandatory third-party runtime dependencies.
+# Optional integrations are declared in pyproject.toml extras:
+#   pip install -e ".[rl]"
+#   pip install -e ".[agents]"

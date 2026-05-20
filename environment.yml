@@ -1,0 +1,10 @@
+name: agent-with-rl
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - pytest>=8
+  - pip:
+      - -r requirements-runtime.txt
+      - -r requirements-dev.txt

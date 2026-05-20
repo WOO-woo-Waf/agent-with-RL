@@ -55,7 +55,7 @@
 
 ### Core Domain Layer
 
-核心层位于 `src/agent_rl/concepts.py`，只定义领域对象和 Protocol，不绑定任何框架：
+核心层位于 `src/agent_rl/core/`，只定义通用 Agent/RL 对象和 Protocol，不绑定任何框架：
 
 - `Environment` 对齐 Gymnasium 的 `reset()` / `step()` 思路，但返回项目自己的 `Observation` 和 `Transition`。
 - `Policy` 是策略接口，可以由规则、LLM、训练模型、planner 或 router 实现。
@@ -64,7 +64,7 @@
 
 ### Runtime Layer
 
-`src/agent_rl/runtime.py` 的 `AgentRuntime` 是最小闭环：
+`src/agent_rl/core/runtime.py` 的 `AgentRuntime` 是最小闭环：
 
 1. reset environment
 2. 构造 `AgentState`
@@ -78,7 +78,7 @@
 
 ### Architecture Layer
 
-`src/agent_rl/architectures.py` 显式表达几种 Agent 架构：
+`src/agent_rl/core/architectures.py` 显式表达几种 Agent 架构：
 
 - `ReActAgent`：单层在线闭环 controller，每一步重新观察和决策。
 - `PlanAndExecuteAgent`：高层 planner 先产出 plan，低层 executor 顺序执行。

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Sequence
 
-from agent_rl.concepts import Action, Environment, Observation, Reward, Tool, Transition
+from agent_rl.core import Action, Environment, Observation, Reward, Tool, Transition
 
 
 class OptionalDependencyMissing(ImportError):

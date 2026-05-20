@@ -1,4 +1,4 @@
-from agent_rl.narrative import (
+from agent_rl.domains.narrative import (
     EvaluationIssue,
     EvaluationReport,
     EvidencePack,

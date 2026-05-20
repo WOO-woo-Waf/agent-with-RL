@@ -5,10 +5,10 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Sequence
 
-from agent_rl.concepts import Action, AgentState, Decision, Environment, Goal, Policy, Trajectory
-from agent_rl.memory import InMemoryStore
-from agent_rl.policies import SequencePolicy
-from agent_rl.runtime import AgentRuntime
+from agent_rl.core.concepts import Action, AgentState, Decision, Environment, Goal, Policy, Trajectory
+from agent_rl.core.memory import InMemoryStore
+from agent_rl.core.policies import SequencePolicy
+from agent_rl.core.runtime import AgentRuntime
 
 
 class ReActAgent:

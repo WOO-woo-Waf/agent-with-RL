@@ -1,6 +1,6 @@
 from agent_rl import Goal
 from agent_rl.examples.gridworld import GreedyGridPolicy, GridWorldEnv
-from agent_rl.runtime import AgentRuntime
+from agent_rl.core import AgentRuntime
 
 
 def test_greedy_grid_policy_reaches_target() -> None:
