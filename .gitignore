@@ -1,0 +1,38 @@
+# Python/build/test
+__pycache__/
+*.py[cod]
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.coverage*
+htmlcov/
+
+# Environments and secrets
+.env
+.env.local
+.env.*.local
+.venv/
+venv/
+.secrets/
+secrets.json
+credentials.json
+api_keys.json
+*.pem
+*.key
+
+# Runtime and generated outputs
+artifacts/
+logs/
+runtime/*
+!runtime/README.md
+
+# Local data and large files
+data/
+downloads/
+cache/
+*.db
+*.sqlite3
+*.zip
+*.tar.gz

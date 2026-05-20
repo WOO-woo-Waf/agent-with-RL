@@ -580,3 +580,135 @@ finish
 - 使用 RL 或偏好优化提升 agent 决策质量。
 
 这条路线能避免一开始陷入“训练什么模型”的泥潭，而是先把 agent 系统本身做成一个可以观察、可以评估、可以进化的工程平台。
+
+## 10. 当前先进 Agent 能力学习路线
+
+本项目后续学习和实现不要只盯着 RL。RL 提供“状态、动作、奖励、轨迹、策略优化”的底层语言，但更好的 Agent 系统还需要同时吸收 RAG、长期记忆、记忆压缩、多 Agent 编排、评估、安全约束和可观测性。
+
+### 10.1 Agent Runtime
+
+需要重点学习：
+
+- OpenAI Agents SDK：agents、tools、handoffs、guardrails、sessions、tracing。
+- LangGraph：stateful graph、durable execution、checkpoint、human-in-the-loop。
+- AutoGen / CrewAI：多 Agent 角色协作、任务分派、汇总与冲突处理。
+
+本项目代码中对应：
+
+- `AgentRuntime`
+- `ReActAgent`
+- `PlanAndExecuteAgent`
+- `MultiAgentCoordinator`
+
+### 10.2 RAG 与知识检索
+
+RAG 在 Agent 系统中不是简单“问向量库”，而是 observation builder：它决定 Agent 每一步看到哪些外部事实。
+
+后续应补充：
+
+- `Retriever`
+- `Reranker`
+- `ContextBuilder`
+- `Citation`
+- retrieval eval
+
+重点能力：
+
+- query rewriting
+- multi-hop retrieval
+- hybrid search
+- reranking
+- grounded answer checking
+- agentic RAG：由 Agent 决定何时检索、检索什么、如何验证检索结果。
+
+### 10.3 长期记忆与记忆压缩
+
+Agent 的记忆至少分为：
+
+- 工作记忆：当前任务上下文。
+- 情节记忆：过去任务轨迹。
+- 语义记忆：稳定事实、用户偏好、项目知识。
+- 程序性记忆：可复用技能、流程和策略。
+
+需要重点研究：
+
+- mem0：面向 assistant/agent 的持久化上下文记忆。
+- Letta / MemGPT：agent 自主管理长期记忆与上下文窗口。
+- LangGraph / LangChain memory：thread state、store、checkpoint。
+
+后续代码建议：
+
+- `MemoryCompressor`
+- `MemoryWritePolicy`
+- `MemoryRetrievalPolicy`
+- `MemoryValidator`
+- `MemoryDecayPolicy`
+
+记忆不是越多越好。好的记忆系统要能写入、检索、压缩、纠错、遗忘。
+
+### 10.4 评估、奖励与策略优化
+
+先把 Agent 的行为变成数据，再考虑强化学习：
+
+- 记录 `Trajectory`。
+- 记录 action、observation、reward、cost、latency、error、human feedback。
+- 用 evaluator 判断任务成功、风险、成本和质量。
+- 从轨迹中学习小策略，而不是一开始训练整个 LLM。
+
+优先优化的小策略：
+
+- 工具选择策略。
+- RAG 检索策略。
+- 停止策略。
+- 反思/重试策略。
+- 子 Agent 路由策略。
+- 上下文预算分配策略。
+
+### 10.5 项目原则
+
+本项目要坚持：
+
+- 核心抽象自己掌握。
+- 训练算法借助 SB3、RLlib、CleanRL。
+- RL 环境接口对齐 Gymnasium、PettingZoo。
+- 生产 Agent 编排参考 OpenAI Agents SDK、LangGraph、AutoGen、CrewAI。
+- RAG 和记忆系统优先薄适配成熟框架，再抽象自己的统一接口。
+- 所有实验都要产出可回放轨迹和可比较指标。
+
+## 11. 小说创作作为第一个复杂 Agent 场景
+
+`D:\buff\narrative-state-engine\docs` 中的小说续写项目应作为本项目的第一个复杂场景来吸收，而不是简单照搬。
+
+核心判断：
+
+- 保留小说领域：角色、关系、世界规则、剧情线、伏笔、场景、风格、作者计划、证据、记忆、校验。
+- 不保留前端复杂度。
+- 不把 `NovelAgentState` 做成封闭大对象，而是抽象为 `NarrativeTaskState` + `NarrativeScenarioAdapter`。
+- 用当前项目的 Agent/RL 抽象重新组织：状态、观测、动作、策略、轨迹、奖励/评估、记忆、RAG、guardrail。
+
+当前已整合：
+
+- `src/agent_rl/narrative.py`：小说场景领域模型。
+- `docs/design-architecture/narrative-agent-system/NARRATIVE_AGENT_DOMAIN_MODEL_2026-05-20.md`：小说 Agent 场景建模与改进设计。
+
+小说场景的目标不是“让模型多写字”，而是建立一个可控创作环境：
+
+```text
+作者输入
+-> 意图/约束抽取
+-> 记忆与证据检索
+-> 章节/场景规划
+-> 草稿生成
+-> 状态变化抽取
+-> 角色/剧情/风格/世界/作者意图评估
+-> 修复或人工确认
+-> canonical state 提交
+-> 记忆压缩与索引更新
+```
+
+这个场景非常适合后续研究：
+
+- Agent runtime 如何承载长任务。
+- RAG 如何从普通问答升级为任务感知检索。
+- mem0/Letta 式长期记忆如何和状态机结合。
+- RL 如何优化检索、修复、停止、分支选择、记忆写入等小策略。
