@@ -176,3 +176,6 @@ class NarrativeAnalysisRepository(Protocol):
 
     def load_global_analysis(self, *, story_id: str, task_id: str) -> GlobalStoryAnalysisResult | None:
         ...
+
+    def load_source_analysis(self, *, story_id: str, task_id: str) -> NarrativeSourceAnalysis | None:
+        ...

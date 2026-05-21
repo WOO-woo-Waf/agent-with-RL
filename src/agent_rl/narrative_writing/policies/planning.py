@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from agent_rl.domains.narrative import ChapterBlueprint, ChapterPlan, EvidencePack, NarrativeTaskState
+from agent_rl.domains.narrative import ChapterBlueprint, ChapterBlueprintSegment, ChapterPlan, EvidencePack, NarrativeTaskState
 from agent_rl.narrative_writing.requests import AuthorRequest
 from agent_rl.narrative_writing.utils import is_negative_constraint, new_id, split_author_items, unique
 
@@ -19,6 +19,13 @@ class RuleBasedPlanningPolicy:
             if is_negative_constraint(item)
         )
         related_threads = [thread.thread_id for thread in state.plot_threads[:3]]
+        target_total_chars = max(int(request.target_word_count or 0), 0)
+        segments = _build_segments(
+            required_beats=required or [request.writing_direction.strip()],
+            forbidden_beats=list(forbidden),
+            target_total_chars=target_total_chars,
+            related_threads=related_threads,
+        )
         return ChapterBlueprint(
             blueprint_id=new_id("blueprint"),
             chapter_index=request.target_chapter_index,
@@ -26,9 +33,13 @@ class RuleBasedPlanningPolicy:
             required_plot_threads=related_threads,
             required_beats=required or [request.writing_direction.strip()],
             forbidden_beats=list(forbidden),
-            expected_scene_count=2,
+            expected_scene_count=max(1, len(segments)),
             pacing_target=_infer_pacing(request),
             ending_hook="保留一个未完全回答的问题，方便下一章继续推进。",
+            target_total_chars=target_total_chars,
+            segments=segments,
+            requires_author_confirmation=True,
+            confirmed=request.confirm_plan,
         )
 
     def build_chapter_plan(
@@ -65,3 +76,45 @@ def _infer_pacing(request: AuthorRequest) -> str:
     if "快" in text or "战斗" in text:
         return "fast_action"
     return "balanced"
+
+
+def _build_segments(
+    *,
+    required_beats: list[str],
+    forbidden_beats: list[str],
+    target_total_chars: int,
+    related_threads: list[str],
+) -> list[ChapterBlueprintSegment]:
+    beats = [beat for beat in required_beats if beat.strip()] or ["推进本章核心目标"]
+    if target_total_chars >= 12000 and len(beats) < 4:
+        segment_count = 4
+    else:
+        segment_count = max(1, len(beats))
+    base_targets = _split_target_chars(target_total_chars, segment_count)
+    segments: list[ChapterBlueprintSegment] = []
+    for index in range(segment_count):
+        beat = beats[index] if index < len(beats) else beats[-1]
+        segments.append(
+            ChapterBlueprintSegment(
+                segment_id=new_id("blueprint-segment"),
+                title=f"段落 {index + 1}",
+                goal=beat,
+                target_chars=base_targets[index],
+                required_beats=[beat],
+                forbidden_beats=list(forbidden_beats),
+                plot_thread_ids=list(related_threads),
+                entry_state="承接上一段的角色状态和信息边界" if index else "承接既有 canon 和作者方向",
+                exit_state="为下一段保留推进空间",
+            )
+        )
+    return segments
+
+
+def _split_target_chars(total: int, count: int) -> list[int]:
+    if count <= 0:
+        return []
+    if total <= 0:
+        return [0 for _ in range(count)]
+    base = total // count
+    remainder = total % count
+    return [base + (1 if index < remainder else 0) for index in range(count)]

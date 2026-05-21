@@ -9,6 +9,7 @@ from agent_rl.domains.narrative import (
     PromptContextSection,
     WorkingMemoryContext,
 )
+from agent_rl.narrative_writing.longform_context import LongformContextSelector
 from agent_rl.narrative_writing.requests import AuthorRequest
 from agent_rl.narrative_writing.utils import new_id
 
@@ -18,6 +19,7 @@ class BudgetedNarrativeContextPolicy:
 
     def __init__(self, char_budget: int = 12000) -> None:
         self.char_budget = char_budget
+        self.longform_selector = LongformContextSelector()
 
     def build(
         self,
@@ -120,6 +122,8 @@ class BudgetedNarrativeContextPolicy:
                 "section_count": len(sections),
             },
         )
+        blueprint = state.chapter_blueprints[-1] if state.chapter_blueprints else None
+        context = self.longform_selector.attach_to_context(context, state, request, blueprint)
         context.metadata["estimated_tokens"] = context.estimated_tokens
         return context
 

@@ -410,6 +410,22 @@ class AuthorConstraint:
 
 
 @dataclass
+class ChapterBlueprintSegment:
+    """Author-confirmable segment plan inside a chapter blueprint."""
+
+    segment_id: str
+    title: str = ""
+    goal: str = ""
+    target_chars: int = 0
+    required_beats: list[str] = field(default_factory=list)
+    forbidden_beats: list[str] = field(default_factory=list)
+    involved_character_ids: list[str] = field(default_factory=list)
+    plot_thread_ids: list[str] = field(default_factory=list)
+    entry_state: str = ""
+    exit_state: str = ""
+
+
+@dataclass
 class ChapterBlueprint:
     """Author/system chapter-level plan that generation must satisfy."""
 
@@ -423,6 +439,10 @@ class ChapterBlueprint:
     expected_scene_count: int | None = None
     pacing_target: str = ""
     ending_hook: str = ""
+    target_total_chars: int = 0
+    segments: list[ChapterBlueprintSegment] = field(default_factory=list)
+    requires_author_confirmation: bool = True
+    confirmed: bool = False
 
 
 @dataclass

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import asdict, is_dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Sequence, TypeVar
@@ -17,6 +16,7 @@ from agent_rl.domains.narrative import (
     SourceChunk,
     SourceDocument,
 )
+from agent_rl.narrative_writing.serialization import from_jsonable, to_jsonable
 
 
 T = TypeVar("T")
@@ -129,7 +129,13 @@ class FileNarrativeAnalysisRepository:
         path = self._story_dir(story_id, task_id) / "global_analysis.json"
         if not path.exists():
             return None
-        return GlobalStoryAnalysisResult(**json.loads(path.read_text(encoding="utf-8")))
+        return from_jsonable(GlobalStoryAnalysisResult, json.loads(path.read_text(encoding="utf-8")))
+
+    def load_source_analysis(self, *, story_id: str, task_id: str) -> NarrativeSourceAnalysis | None:
+        path = self._story_dir(story_id, task_id) / "source_analysis.json"
+        if not path.exists():
+            return None
+        return from_jsonable(NarrativeSourceAnalysis, json.loads(path.read_text(encoding="utf-8")))
 
     def _story_dir(self, story_id: str, task_id: str) -> Path:
         safe_story = _safe_path_part(story_id or "story")
@@ -147,13 +153,7 @@ class FileNarrativeAnalysisRepository:
 
 
 def _to_jsonable(value: Any) -> Any:
-    if is_dataclass(value):
-        return asdict(value)
-    if isinstance(value, dict):
-        return {str(key): _to_jsonable(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_to_jsonable(item) for item in value]
-    return value
+    return to_jsonable(value)
 
 
 def _load_typed_jsonl(path: Path, cls: type[T]) -> list[T]:
@@ -162,7 +162,7 @@ def _load_typed_jsonl(path: Path, cls: type[T]) -> list[T]:
     rows: list[T] = []
     for line in path.read_text(encoding="utf-8").splitlines():
         if line.strip():
-            rows.append(cls(**json.loads(line)))
+            rows.append(from_jsonable(cls, json.loads(line)))
     return rows
 
 

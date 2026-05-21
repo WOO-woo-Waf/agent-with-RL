@@ -11,7 +11,8 @@ class BasicAuthorInteractionPolicy:
 
     def missing_questions(self, request: AuthorRequest, state: NarrativeTaskState | None) -> list[AuthorQuestion]:
         questions: list[AuthorQuestion] = []
-        if not request.references and state is None:
+        has_recoverable_state = bool(request.analysis_path or request.state_snapshot_path)
+        if not request.references and state is None and not has_recoverable_state:
             questions.append(
                 AuthorQuestion(
                     question_id="reference_material",

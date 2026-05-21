@@ -35,6 +35,10 @@ class AuthorRequest:
     target_chapter_index: int = 1
     confirm_plan: bool = False
     target_word_count: int = 1200
+    analysis_path: str = ""
+    state_snapshot_path: str = ""
+    persist_artifacts: bool = False
+    artifact_root: str = ""
 
 
 @dataclass

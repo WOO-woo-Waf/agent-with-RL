@@ -65,10 +65,10 @@ class AgentRuntime:
 
             observation = transition.next_observation
             if transition.terminated:
-                trajectory.outcome = "terminated"
+                trajectory.outcome = str(transition.info.get("outcome") or "terminated")
                 break
             if transition.truncated:
-                trajectory.outcome = "truncated"
+                trajectory.outcome = str(transition.info.get("outcome") or "truncated")
                 break
         else:
             trajectory.outcome = "max_steps"
