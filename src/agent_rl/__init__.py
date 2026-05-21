@@ -24,6 +24,7 @@ from agent_rl.core import (
     ReActAgent,
     SequencePolicy,
 )
+from agent_rl.config import env_snapshot, find_env_file, get_env, load_env_file, load_project_env
 from agent_rl.domains.narrative import NarrativeTaskState
 from agent_rl.llm import (
     ChatModelClient,
@@ -34,11 +35,14 @@ from agent_rl.llm import (
 )
 from agent_rl.narrative_writing import (
     AuthorRequest,
+    FileNarrativeAnalysisRepository,
+    LLMDeepNarrativeAnalysisPolicy,
     NarrativeRunResult,
     NarrativeScenarioAdapter,
     NarrativeWritingAgent,
     ReferenceMaterial,
     build_author_request_from_files,
+    build_narrative_writing_agent,
     load_reference_directory,
     load_reference_file,
     read_text_file,
@@ -53,11 +57,13 @@ __all__ = [
     "Decision",
     "Environment",
     "Evaluator",
+    "FileNarrativeAnalysisRepository",
     "Goal",
     "Guardrail",
     "GreedyActionPolicy",
     "InMemoryStore",
     "JsonBlobParser",
+    "LLMDeepNarrativeAnalysisPolicy",
     "MemoryStore",
     "MultiAgentCoordinator",
     "NarrativeTaskState",
@@ -78,7 +84,13 @@ __all__ = [
     "TrajectoryStep",
     "Transition",
     "build_author_request_from_files",
+    "build_narrative_writing_agent",
     "has_llm_configuration",
+    "env_snapshot",
+    "find_env_file",
+    "get_env",
+    "load_env_file",
+    "load_project_env",
     "load_reference_directory",
     "load_reference_file",
     "read_text_file",

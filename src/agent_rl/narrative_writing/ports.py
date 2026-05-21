@@ -6,13 +6,18 @@ from typing import Protocol, Sequence
 
 from agent_rl.domains.narrative import (
     ChapterBlueprint,
+    ChapterAnalysisResult,
     ChapterPlan,
+    ChunkAnalysisResult,
     DraftCandidate,
     EvaluationReport,
     EvidencePack,
+    GlobalStoryAnalysisResult,
     NarrativeSourceAnalysis,
     NarrativeQuery,
     NarrativeTaskState,
+    SourceChunk,
+    SourceDocument,
     StateChangeProposal,
     WorkingMemoryContext,
 )
@@ -121,4 +126,53 @@ class NarrativeMemoryPolicy(Protocol):
     """Writes accepted changes into long-term and compressed memory."""
 
     def apply(self, state: NarrativeTaskState, changes: Sequence[StateChangeProposal]) -> NarrativeTaskState:
+        ...
+
+
+class NarrativeAnalysisRepository(Protocol):
+    """Persists reusable source-analysis assets behind a replaceable boundary."""
+
+    def save_source_analysis(self, analysis: NarrativeSourceAnalysis) -> None:
+        ...
+
+    def save_source_documents(self, *, story_id: str, task_id: str, documents: Sequence[SourceDocument]) -> None:
+        ...
+
+    def save_source_chunks(self, *, story_id: str, task_id: str, chunks: Sequence[SourceChunk]) -> None:
+        ...
+
+    def save_chunk_analyses(
+        self,
+        *,
+        story_id: str,
+        task_id: str,
+        analyses: Sequence[ChunkAnalysisResult],
+    ) -> None:
+        ...
+
+    def save_chapter_analyses(
+        self,
+        *,
+        story_id: str,
+        task_id: str,
+        analyses: Sequence[ChapterAnalysisResult],
+    ) -> None:
+        ...
+
+    def save_global_analysis(
+        self,
+        *,
+        story_id: str,
+        task_id: str,
+        analysis: GlobalStoryAnalysisResult,
+    ) -> None:
+        ...
+
+    def load_chunk_analyses(self, *, story_id: str, task_id: str) -> list[ChunkAnalysisResult]:
+        ...
+
+    def load_chapter_analyses(self, *, story_id: str, task_id: str) -> list[ChapterAnalysisResult]:
+        ...
+
+    def load_global_analysis(self, *, story_id: str, task_id: str) -> GlobalStoryAnalysisResult | None:
         ...

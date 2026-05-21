@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from threading import Lock
 from typing import Any, Sequence
 
+from agent_rl.config import get_env, get_env_float, get_env_int
 from agent_rl.llm.audit import (
     build_interaction_record,
     build_usage_record,
@@ -37,15 +38,15 @@ class OpenAICompatibleConfig:
     @classmethod
     def from_env(cls) -> "OpenAICompatibleConfig":
         return cls(
-            api_base=os.getenv("LLM_API_BASE", "").strip(),
-            api_key=os.getenv("LLM_API_KEY", "").strip(),
-            model_name=os.getenv("LLM_MODEL", "").strip(),
-            temperature=_float_env("LLM_TEMPERATURE", 0.2),
-            max_tokens=_int_env("LLM_MAX_TOKENS", 4096),
-            top_p=_float_env("LLM_TOP_P", 1.0),
-            timeout_s=_float_env("LLM_TIMEOUT_S", 120.0),
-            max_attempts=_int_env("LLM_MAX_ATTEMPTS", 3),
-            base_backoff_s=_float_env("LLM_BASE_BACKOFF_S", 0.6),
+            api_base=get_env("LLM_API_BASE").strip(),
+            api_key=get_env("LLM_API_KEY").strip(),
+            model_name=get_env("LLM_MODEL").strip(),
+            temperature=get_env_float("LLM_TEMPERATURE", 0.2),
+            max_tokens=get_env_int("LLM_MAX_TOKENS", 4096),
+            top_p=get_env_float("LLM_TOP_P", 1.0),
+            timeout_s=get_env_float("LLM_TIMEOUT_S", 120.0),
+            max_attempts=get_env_int("LLM_MAX_ATTEMPTS", 3),
+            base_backoff_s=get_env_float("LLM_BASE_BACKOFF_S", 0.6),
         )
 
     @property
@@ -253,6 +254,8 @@ def _chat_completions_url(api_base: str) -> str:
     base = api_base.rstrip("/")
     if base.endswith("/chat/completions"):
         return base
+    if "api.deepseek.com" in base:
+        return f"{base}/chat/completions"
     if base.endswith("/v1"):
         return f"{base}/chat/completions"
     return f"{base}/v1/chat/completions"
@@ -306,17 +309,3 @@ def _sleep_backoff(*, attempt: int, base_backoff_s: float) -> None:
 
 def _duration_ms(started_at: float) -> int:
     return max(int((time.perf_counter() - started_at) * 1000), 0)
-
-
-def _float_env(name: str, default: float) -> float:
-    try:
-        return float(os.getenv(name, str(default)))
-    except ValueError:
-        return default
-
-
-def _int_env(name: str, default: int) -> int:
-    try:
-        return int(os.getenv(name, str(default)))
-    except ValueError:
-        return default

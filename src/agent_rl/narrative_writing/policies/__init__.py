@@ -2,6 +2,7 @@
 
 from agent_rl.narrative_writing.policies.analysis import RuleBasedSourceAnalysisPolicy
 from agent_rl.narrative_writing.policies.context import BudgetedNarrativeContextPolicy
+from agent_rl.narrative_writing.policies.deep_analysis import LLMDeepNarrativeAnalysisPolicy
 from agent_rl.narrative_writing.policies.evaluation import CompositeNarrativeEvaluatorPolicy
 from agent_rl.narrative_writing.policies.extraction import LLMNarrativeExtractorPolicy, RuleBasedExtractorPolicy
 from agent_rl.narrative_writing.policies.interaction import BasicAuthorInteractionPolicy
@@ -22,6 +23,7 @@ __all__ = [
     "CompositeNarrativeEvaluatorPolicy",
     "CompositeNarrativeRetrievalPolicy",
     "KeywordNarrativeRetrievalPolicy",
+    "LLMDeepNarrativeAnalysisPolicy",
     "LLMNarrativeExtractorPolicy",
     "LLMNarrativeWriterPolicy",
     "RetrievalQuota",

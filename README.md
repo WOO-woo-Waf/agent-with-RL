@@ -17,11 +17,44 @@ conda activate agent-with-rl
 python -m pytest
 ```
 
+DeepSeek 环境准备：
+
+```powershell
+Copy-Item .env.example .env
+# 然后在 .env 里填写 LLM_API_KEY，默认 LLM_API_BASE=https://api.deepseek.com
+# 默认模型示例是 LLM_MODEL=deepseek-v4-flash
+```
+
+配置模块：
+
+- `agent_rl.config` 提供跨 Windows/Linux 的 `.env` 加载、向上查找、`${VAR}` 展开、typed env 读取和脱敏快照。
+- `.env` 是本地私有文件，`.env.example` 是可提交的配置契约。
+
 示例运行：
 
 ```powershell
 $env:PYTHONPATH="src"; python -m agent_rl.examples.gridworld
 $env:PYTHONPATH="src"; python -m agent_rl.examples.narrative_demo
+```
+
+真实小说续写入口：
+
+```powershell
+# 先只生成章节蓝图，确认方向
+$env:PYTHONPATH="src"; python -m agent_rl.examples.narrative_continue `
+  --reference data/my-novel/chapter-01.txt `
+  --direction "下一章继续推进密信线索，不要让主角立刻原谅对方" `
+  --constraint "不要让主角立刻原谅对方" `
+  --llm
+
+# 确认蓝图后再生成正文，并导出纯正文
+$env:PYTHONPATH="src"; python -m agent_rl.examples.narrative_continue `
+  --reference data/my-novel/chapter-01.txt `
+  --direction "下一章继续推进密信线索，不要让主角立刻原谅对方" `
+  --constraint "不要让主角立刻原谅对方" `
+  --confirm-plan `
+  --llm `
+  --output artifacts/narrative/chapter-continue.txt
 ```
 
 小说写作 Agent 支持把本地参考小说文本读入为 `ReferenceMaterial`，再进入初始状态、RAG 证据和记忆层：
@@ -54,6 +87,7 @@ result = NarrativeWritingAgent().run(request)
 - `docs/design-architecture/core-package-layering/AGENT_RL_CORE_LAYERING_DESIGN_2026-05-20.md`
 - `docs/design-architecture/narrative-agent-system/NARRATIVE_AGENT_DOMAIN_MODEL_2026-05-20.md`
 - `docs/design-architecture/narrative-agent-system/NARRATIVE_ENGINE_ABSORPTION_PLAN_2026-05-20.md`
+- `docs/design-architecture/narrative-agent-system/NARRATIVE_DEEP_ANALYSIS_PERSISTENCE_2026-05-21.md`
 
 研究笔记：
 

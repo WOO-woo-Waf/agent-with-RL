@@ -7,6 +7,7 @@ from agent_rl.llm import (
     OpenAICompatibleConfig,
     has_llm_configuration,
 )
+from agent_rl.llm.clients import _chat_completions_url
 
 
 class FakeOpenAICompatibleClient(OpenAICompatibleChatClient):
@@ -111,3 +112,8 @@ def test_openai_compatible_client_requires_config() -> None:
         assert "LLM configuration is incomplete" in str(exc)
     else:
         raise AssertionError("expected incomplete config failure")
+
+
+def test_deepseek_base_url_uses_official_chat_completions_path() -> None:
+    assert _chat_completions_url("https://api.deepseek.com") == "https://api.deepseek.com/chat/completions"
+    assert _chat_completions_url("https://api.openai.com/v1") == "https://api.openai.com/v1/chat/completions"

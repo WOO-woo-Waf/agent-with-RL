@@ -75,6 +75,98 @@ class NarrativeSourceAnalysis:
     memory_atoms: list["MemoryAtom"] = field(default_factory=list)
     coverage: dict[str, float] = field(default_factory=dict)
     trace: list[dict[str, Any]] = field(default_factory=list)
+    chunk_analyses: list["ChunkAnalysisResult"] = field(default_factory=list)
+    chapter_analyses: list["ChapterAnalysisResult"] = field(default_factory=list)
+    global_analysis: "GlobalStoryAnalysisResult | None" = None
+
+
+@dataclass
+class ChunkAnalysisResult:
+    """LLM-derived analysis of one source chunk.
+
+    Chunk analysis is an implementation detail for retrieval and synthesis. It
+    should be merged upward into chapter and global story state before driving
+    author-facing planning.
+    """
+
+    analysis_id: str
+    chunk_id: str
+    document_id: str
+    chapter_index: int | None = None
+    chunk_index: int = 0
+    start_offset: int = 0
+    end_offset: int = 0
+    summary: str = ""
+    key_events: list[str] = field(default_factory=list)
+    open_questions: list[str] = field(default_factory=list)
+    character_mentions: list[str] = field(default_factory=list)
+    world_rule_candidates: list[str] = field(default_factory=list)
+    plot_thread_candidates: list[str] = field(default_factory=list)
+    scene_state: dict[str, Any] = field(default_factory=dict)
+    style_features: dict[str, Any] = field(default_factory=dict)
+    source_evidence: list[dict[str, Any]] = field(default_factory=list)
+    retrieval_keywords: list[str] = field(default_factory=list)
+    confidence: float = 0.0
+    raw_payload: dict[str, Any] = field(default_factory=dict)
+    fallback_reason: str = ""
+
+
+@dataclass
+class ChapterAnalysisResult:
+    """Merged chapter-level analysis produced from chunk analyses."""
+
+    analysis_id: str
+    chapter_index: int
+    chapter_title: str = ""
+    source_start_offset: int = 0
+    source_end_offset: int = 0
+    chunk_ids: list[str] = field(default_factory=list)
+    chapter_summary: str = ""
+    chapter_events: list[str] = field(default_factory=list)
+    characters_involved: list[str] = field(default_factory=list)
+    character_state_updates: dict[str, list[str]] = field(default_factory=dict)
+    relationship_updates: list[dict[str, Any]] = field(default_factory=list)
+    scene_sequence: list[dict[str, Any]] = field(default_factory=list)
+    world_rules_confirmed: list[str] = field(default_factory=list)
+    setting_concepts: list[dict[str, Any]] = field(default_factory=list)
+    foreshadowing: list[dict[str, Any]] = field(default_factory=list)
+    open_questions: list[str] = field(default_factory=list)
+    scene_markers: list[str] = field(default_factory=list)
+    style_profile_override: dict[str, Any] = field(default_factory=dict)
+    chapter_synopsis: str = ""
+    retrieval_keywords: list[str] = field(default_factory=list)
+    coverage: dict[str, Any] = field(default_factory=dict)
+    raw_payload: dict[str, Any] = field(default_factory=dict)
+    fallback_reason: str = ""
+
+
+@dataclass
+class GlobalStoryAnalysisResult:
+    """Global analysis state synthesized from chapter analyses."""
+
+    analysis_id: str
+    story_id: str
+    title: str = ""
+    story_synopsis: str = ""
+    chapter_count: int = 0
+    character_registry: list[dict[str, Any]] = field(default_factory=list)
+    relationship_graph: list[dict[str, Any]] = field(default_factory=list)
+    plot_threads: list[dict[str, Any]] = field(default_factory=list)
+    world_rules: list[dict[str, Any]] = field(default_factory=list)
+    setting_systems: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    locations: list[dict[str, Any]] = field(default_factory=list)
+    objects: list[dict[str, Any]] = field(default_factory=list)
+    organizations: list[dict[str, Any]] = field(default_factory=list)
+    foreshadowing_states: list[dict[str, Any]] = field(default_factory=list)
+    scene_case_library: list[dict[str, Any]] = field(default_factory=list)
+    retrieval_index_suggestions: list[dict[str, Any]] = field(default_factory=list)
+    continuity_constraints: list[str] = field(default_factory=list)
+    style_profile: dict[str, Any] = field(default_factory=dict)
+    global_open_questions: list[str] = field(default_factory=list)
+    chapter_index_map: dict[str, Any] = field(default_factory=dict)
+    analysis_coverage: dict[str, Any] = field(default_factory=dict)
+    raw_payload: dict[str, Any] = field(default_factory=dict)
+    fallback_reason: str = ""
 
 
 @dataclass
