@@ -5,7 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from agent_rl.domains.narrative import EvidencePack, NarrativeEvidence, NarrativeQuery, NarrativeTaskState
+from agent_rl.narrative_writing.ports import NarrativeMemoryRepository
 from agent_rl.narrative_writing.utils import new_id, tokenize
+from agent_rl.rag import RAGModelService, VectorSearchResult
 
 
 SOURCE_TYPE_WEIGHTS = {
@@ -153,6 +155,86 @@ class KeywordNarrativeRetrievalPolicy:
             }
         )
         _trim_pack(pack)
+        return pack
+
+
+class SQLiteFTSNarrativeRetrievalPolicy:
+    """Retrieves persisted memory evidence before local in-state fallback."""
+
+    def __init__(
+        self,
+        memory_repository: NarrativeMemoryRepository,
+        *,
+        fallback: CompositeNarrativeRetrievalPolicy | None = None,
+        limit: int = 12,
+    ) -> None:
+        self.memory_repository = memory_repository
+        self.fallback = fallback or CompositeNarrativeRetrievalPolicy()
+        self.limit = limit
+
+    def retrieve(self, state: NarrativeTaskState, query: NarrativeQuery) -> EvidencePack:
+        pack = self.fallback.retrieve(state, query)
+        persisted = self.memory_repository.search(state.story_id, query.query_text, limit=self.limit)
+        pack.plot_evidence = _select([*persisted, *pack.plot_evidence], self.limit)
+        pack.retrieval_trace.append(
+            {
+                "policy": self.__class__.__name__,
+                "persisted_memory_count": len(persisted),
+                "memory_repository": self.memory_repository.__class__.__name__,
+            }
+        )
+        return pack
+
+
+class RAGVectorNarrativeRetrievalPolicy:
+    """Merges vector RAG service results with local structural evidence."""
+
+    def __init__(
+        self,
+        rag_service: RAGModelService,
+        *,
+        fallback: CompositeNarrativeRetrievalPolicy | None = None,
+        collection_id: str = "narrative",
+        limit: int = 12,
+        rerank: bool = True,
+    ) -> None:
+        self.rag_service = rag_service
+        self.fallback = fallback or CompositeNarrativeRetrievalPolicy()
+        self.collection_id = collection_id
+        self.limit = limit
+        self.rerank = rerank
+
+    def retrieve(self, state: NarrativeTaskState, query: NarrativeQuery) -> EvidencePack:
+        pack = self.fallback.retrieve(state, query)
+        try:
+            rows = self.rag_service.search(
+                query.query_text,
+                story_id=state.story_id,
+                evidence_types=query.required_evidence_types or None,
+                collection_id=self.collection_id,
+                limit=self.limit,
+                rerank=self.rerank,
+            )
+        except Exception as exc:  # noqa: BLE001 - retrieval should degrade to local evidence.
+            pack.retrieval_trace.append(
+                {
+                    "policy": self.__class__.__name__,
+                    "status": "failed",
+                    "reason": str(exc),
+                    "fallback": self.fallback.__class__.__name__,
+                }
+            )
+            return pack
+        _merge_vector_rows(pack, rows)
+        pack.retrieval_trace.append(
+            {
+                "policy": self.__class__.__name__,
+                "status": "succeeded",
+                "vector_result_count": len(rows),
+                "collection_id": self.collection_id,
+                "rerank": self.rerank,
+            }
+        )
         return pack
 
 
@@ -324,3 +406,51 @@ def _trim_pack(pack: EvidencePack, limit: int = 6) -> None:
     ):
         items.sort(key=lambda item: item.final_score, reverse=True)
         del items[limit:]
+
+
+def _merge_vector_rows(pack: EvidencePack, rows: list[VectorSearchResult]) -> None:
+    for row in rows:
+        evidence = NarrativeEvidence(
+            evidence_id=row.evidence_id,
+            evidence_type=row.evidence_type,
+            source=row.source or "rag_vector",
+            text=row.text,
+            usage_hint="vector_rag",
+            related_entities=list(row.related_entities),
+            related_plot_threads=list(row.related_plot_threads),
+            chapter_index=row.chapter_index,
+            score_vector=round(float(row.score), 4),
+            final_score=round(float(row.score), 4),
+        )
+        target = _target_bucket(pack, row.evidence_type)
+        for index, existing in enumerate(target):
+            if existing.evidence_id == evidence.evidence_id or (existing.evidence_type, existing.text) == (evidence.evidence_type, evidence.text):
+                existing.score_vector = max(existing.score_vector, evidence.score_vector)
+                existing.final_score = max(existing.final_score, _fused_score(existing, evidence.score_vector))
+                existing.source = evidence.source
+                target[index] = existing
+                break
+        else:
+            target.append(evidence)
+        target.sort(key=lambda item: item.final_score, reverse=True)
+
+
+def _target_bucket(pack: EvidencePack, evidence_type: str) -> list[NarrativeEvidence]:
+    if evidence_type in {"style", "style_snippet", "dialogue", "action", "environment"}:
+        return pack.style_evidence
+    if evidence_type in {"character", "character_profile"}:
+        return pack.character_evidence
+    if evidence_type in {"world", "world_rule", "world_fact"}:
+        return pack.world_evidence
+    if evidence_type in {"author_plan", "author_constraint"}:
+        return pack.author_plan_evidence
+    if evidence_type in {"plot", "plot_thread", "event", "episodic_event", "memory", "source_memory", "compressed_memory"}:
+        return pack.plot_evidence
+    return pack.scene_case_evidence
+
+
+def _fused_score(existing: NarrativeEvidence, vector_score: float) -> float:
+    if existing.score_author_plan > 0:
+        return min(1.0, max(existing.score_author_plan, existing.final_score, vector_score))
+    score = 0.65 * max(vector_score, 0.0) + 0.25 * max(existing.score_structural, existing.final_score, 0.0) + 0.10 * max(existing.score_graph, 0.0)
+    return round(min(max(score, existing.final_score, vector_score), 1.0), 4)

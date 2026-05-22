@@ -10,6 +10,10 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = []
 
+[project.scripts]
+narrative-agent = "agent_rl.narrative_writing.cli:main"
+agent-rag = "agent_rl.rag.cli:main"
+
 [project.optional-dependencies]
 dev = ["pytest>=8"]
 rl = [
@@ -23,6 +27,14 @@ agents = [
     "langgraph",
     "langchain",
     "autogen-agentchat",
+]
+rag = [
+    "ollama",
+    "requests",
+    "sentence-transformers",
+    "transformers",
+    "accelerate",
+    "faiss-cpu",
 ]
 
 [tool.setuptools.packages.find]

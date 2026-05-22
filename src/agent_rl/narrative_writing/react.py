@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Literal, Sequence
 
 from agent_rl.core.concepts import Action, AgentState, Decision, Goal, Observation, Reward, Transition
 from agent_rl.domains.narrative import (
     ChapterBlueprint,
     ChapterPlan,
+    BranchEvaluationReport,
+    DraftBranch,
     DraftCandidate,
+    DraftRepairPlan,
+    DraftRevisionCandidate,
     EvaluationReport,
     EvidencePack,
     NarrativeTaskState,
@@ -17,7 +21,7 @@ from agent_rl.domains.narrative import (
     WorkingMemoryContext,
 )
 from agent_rl.narrative_writing.policies import BasicAuthorInteractionPolicy
-from agent_rl.narrative_writing.ports import AuthorInteractionPolicy
+from agent_rl.narrative_writing.ports import AuthorInteractionPolicy, NarrativeStateRepository
 from agent_rl.narrative_writing.requests import AuthorQuestion, AuthorRequest
 from agent_rl.narrative_writing.scenario import NarrativeScenarioAdapter
 from agent_rl.narrative_writing.persistence import FileNarrativeStateRepository
@@ -36,8 +40,12 @@ NarrativeWorkflowPhase = Literal[
     "blueprint_proposed",
     "blueprint_confirmed",
     "context_ready",
+    "branches_ready",
+    "branch_selection_pending",
+    "branch_selected",
     "draft_ready",
     "evaluated",
+    "repairing",
     "compressed",
     "committed",
     "artifacts_saved",
@@ -58,8 +66,12 @@ class NarrativeWorkflowState:
     working_context: WorkingMemoryContext | None = None
     draft: DraftCandidate | None = None
     draft_segments: list[DraftCandidate] = field(default_factory=list)
+    branches: list[DraftBranch] = field(default_factory=list)
+    selected_branch_id: str = ""
     pending_changes: list[StateChangeProposal] = field(default_factory=list)
     reports: list[EvaluationReport] = field(default_factory=list)
+    repair_history: list[DraftRevisionCandidate] = field(default_factory=list)
+    repair_attempts: int = 0
     committed: bool = False
     outcome: str = "running"
     last_message: str = ""
@@ -81,7 +93,7 @@ class NarrativeReActEnvironment:
         scenario: NarrativeScenarioAdapter | None = None,
         task_state: NarrativeTaskState | None = None,
         interaction_policy: AuthorInteractionPolicy | None = None,
-        state_repository: FileNarrativeStateRepository | None = None,
+        state_repository: NarrativeStateRepository | None = None,
     ) -> None:
         self.request = request
         self.scenario = scenario or NarrativeScenarioAdapter()
@@ -133,16 +145,32 @@ class NarrativeReActEnvironment:
         if phase == "context_ready":
             if self.task_state.working_context is None:
                 return (Action("build_working_context", kind="tool"),)
+            if self._should_generate_branches():
+                if not self.workflow.branches:
+                    return (Action("generate_branches", kind="writing"),)
+                if not self.request.selected_branch_id and not self.workflow.selected_branch_id:
+                    return (Action("wait_for_branch_selection", kind="control"),)
+                return (Action("select_branch", kind="writing"),)
             if self._should_write_segments():
                 if self.workflow.current_segment_index < len(self._require_blueprint().segments):
                     return (Action("generate_segment", kind="writing"),)
                 if self.workflow.draft_segments and self.workflow.draft is None:
                     return (Action("merge_draft_segments", kind="writing"),)
             return (Action("generate_draft", kind="writing"),)
+        if phase == "branch_selection_pending":
+            if self.request.selected_branch_id or self.workflow.selected_branch_id:
+                return (Action("select_branch", kind="writing"),)
+            return (Action("wait_for_branch_selection", kind="control"),)
+        if phase == "branches_ready":
+            return (Action("select_branch", kind="writing"),)
+        if phase == "branch_selected":
+            return (Action("evaluate_draft", kind="writing"),)
         if phase == "draft_ready":
             return (Action("evaluate_draft", kind="writing"),)
         if phase == "evaluated":
             if any(report.blocks_commit for report in self.workflow.reports):
+                if self.request.auto_repair and self.workflow.repair_attempts < max(0, self.request.max_repair_attempts):
+                    return (Action("repair_draft", kind="writing"),)
                 return (Action("rollback", kind="writing"),)
             return (Action("compress_new_draft", kind="tool"),)
         if phase == "compressed":
@@ -212,6 +240,11 @@ class NarrativeReActEnvironment:
             reward = Reward(0.1, {"analysis_ready": 1.0})
         elif action.name == "propose_blueprint":
             blueprint = self.scenario.propose_plan(self.task_state, self.request)
+            history = self.task_state.metadata.get("blueprint_revision_history")
+            if isinstance(history, list) and history:
+                last = history[-1]
+                blueprint.parent_blueprint_id = str(last.get("blueprint_id") or "")
+                blueprint.revision_no = int(last.get("revision_no") or 1) + 1
             self.workflow.proposed_blueprint = blueprint
             self.workflow.phase = "blueprint_proposed"
             self.workflow.last_message = _blueprint_confirmation_message(blueprint)
@@ -261,6 +294,98 @@ class NarrativeReActEnvironment:
                 "longform_layers": dict(context.metadata.get("longform_layers", {})),
             }
             reward = Reward(0.1, {"context_sections": float(len(context.sections))})
+        elif action.name == "generate_branches":
+            pack = self._require_evidence_pack()
+            blueprint = self._require_blueprint()
+            plan = self.task_state.chapter_plan or self.scenario.build_chapter_plan(
+                self.task_state,
+                blueprint,
+                pack,
+                self.request,
+            )
+            context = self.task_state.working_context or self.scenario.build_working_context(
+                self.task_state,
+                plan,
+                pack,
+                self.request,
+            )
+            branches: list[DraftBranch] = []
+            for index in range(max(2, self.request.branch_count)):
+                draft = self.scenario.generate_draft(self.task_state, plan, pack, context)
+                draft = replace(
+                    draft,
+                    draft_id=f"{draft.draft_id}-branch-{index + 1}",
+                    content=f"{draft.content}\n\n[branch {index + 1}] Candidate continuation path.",
+                    metadata={**dict(draft.metadata), "branch_index": index + 1},
+                )
+                changes = self.scenario.extract_changes(self.task_state, draft)
+                reports = self.scenario.evaluate(self.task_state, draft, changes)
+                score = _average_report_score(reports)
+                branch_id = f"branch-{blueprint.blueprint_id}-{index + 1}"
+                branches.append(
+                    DraftBranch(
+                        branch_id=branch_id,
+                        draft=draft,
+                        label=f"Branch {index + 1}",
+                        evaluation=BranchEvaluationReport(
+                            branch_id=branch_id,
+                            score=score,
+                            rationale="Average score across narrative evaluators.",
+                            report_ids=[report.report_id for report in reports],
+                            metrics={
+                                "blocking_reports": float(sum(1 for report in reports if report.blocks_commit)),
+                                "average_report_score": score,
+                            },
+                        ),
+                        metadata={"change_count": len(changes), "report_count": len(reports)},
+                    )
+                )
+            self.workflow.branches = branches
+            self.workflow.draft = None
+            self.workflow.pending_changes = []
+            self.workflow.reports = []
+            self.task_state.draft = None
+            self.task_state.pending_changes = []
+            self.task_state.reports = []
+            self.workflow.phase = "branch_selection_pending"
+            self.workflow.last_message = "Generated candidate draft branches for author selection."
+            self.workflow.last_tool_result = {
+                "tool_name": "generate_branches",
+                "branch_count": len(branches),
+                "branch_ids": [branch.branch_id for branch in branches],
+            }
+            reward = Reward(0.2, {"branch_count": float(len(branches))})
+        elif action.name == "wait_for_branch_selection":
+            self.workflow.outcome = "needs_branch_selection"
+            self.workflow.phase = "branch_selection_pending"
+            self.workflow.last_message = "Please select a draft branch before commit."
+            reward = Reward(0.0, {"needs_branch_selection": 1.0})
+            terminated = True
+        elif action.name == "select_branch":
+            selected = self.scenario.select_branch(
+                self.workflow.branches,
+                self.request.selected_branch_id or self.workflow.selected_branch_id,
+            )
+            if selected is None:
+                self.workflow.outcome = "needs_branch_selection"
+                self.workflow.phase = "branch_selection_pending"
+                self.workflow.last_message = "Selected branch was not found; choose one of the available branch ids."
+                reward = Reward(-0.1, {"missing_branch": 1.0})
+                terminated = True
+            else:
+                selected.status = "selected"
+                self.workflow.selected_branch_id = selected.branch_id
+                self.workflow.draft = selected.draft
+                self.task_state.draft = selected.draft
+                self.workflow.phase = "draft_ready"
+                self.workflow.outcome = "running"
+                self.workflow.last_message = f"Selected draft branch: {selected.branch_id}."
+                self.workflow.last_tool_result = {
+                    "tool_name": "select_branch",
+                    "branch_id": selected.branch_id,
+                    "branch_score": selected.evaluation.score if selected.evaluation else 0.0,
+                }
+                reward = Reward(0.1, {"branch_selected": 1.0})
         elif action.name == "generate_draft":
             pack = self._require_evidence_pack()
             blueprint = self._require_blueprint()
@@ -375,6 +500,31 @@ class NarrativeReActEnvironment:
                 "average_report_score": _average_report_score(reports),
             }
             reward = _reward_from_reports(reports, committed=False)
+        elif action.name == "repair_draft":
+            draft = self._require_draft()
+            self.workflow.repair_attempts += 1
+            revision = self.scenario.repair_draft(
+                self.task_state,
+                draft,
+                self.workflow.reports,
+                attempt_no=self.workflow.repair_attempts,
+            )
+            self.workflow.repair_history.append(revision)
+            self.workflow.draft = revision.draft
+            self.workflow.pending_changes = []
+            self.workflow.reports = []
+            self.task_state.pending_changes = []
+            self.task_state.reports = []
+            self.workflow.phase = "draft_ready"
+            self.workflow.outcome = "running"
+            self.workflow.last_message = "Draft repaired; evaluating the revised candidate next."
+            self.workflow.last_tool_result = {
+                "tool_name": "repair_draft",
+                "repair_id": revision.repair_plan.repair_id,
+                "attempt_no": revision.repair_plan.attempt_no,
+                "blocker_count": len(revision.repair_plan.blocker_summaries),
+            }
+            reward = Reward(0.05, {"repair_attempt": float(self.workflow.repair_attempts)})
         elif action.name == "compress_new_draft":
             result = self.compression_tool.compress(self.task_state, self.workflow.pending_changes)
             self.workflow.phase = "compressed"
@@ -465,6 +615,9 @@ class NarrativeReActEnvironment:
             "has_draft": self.task_state.draft is not None,
             "draft_char_count": draft_chars,
             "draft_segment_count": len(self.workflow.draft_segments),
+            "branch_count": len(self.workflow.branches),
+            "selected_branch_id": self.workflow.selected_branch_id,
+            "repair_attempts": self.workflow.repair_attempts,
             "current_segment_index": self.workflow.current_segment_index,
             "questions": [question.question_id for question in self.workflow.questions],
             "available_action_names": available_action_names,
@@ -509,6 +662,9 @@ class NarrativeReActEnvironment:
             and (blueprint.target_total_chars >= 12000 or self.request.target_word_count >= 12000)
         )
 
+    def _should_generate_branches(self) -> bool:
+        return self.request.branch_count > 1 and not self._should_write_segments()
+
 
 class NarrativeAuthorLedPolicy:
     """Deterministic ReAct policy that respects author confirmation gates."""
@@ -524,10 +680,14 @@ class NarrativeAuthorLedPolicy:
         "confirm_blueprint",
         "retrieve_context",
         "build_working_context",
+        "generate_branches",
+        "wait_for_branch_selection",
+        "select_branch",
         "generate_segment",
         "merge_draft_segments",
         "generate_draft",
         "evaluate_draft",
+        "repair_draft",
         "compress_new_draft",
         "commit_state",
         "save_artifacts",

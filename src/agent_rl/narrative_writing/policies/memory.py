@@ -5,13 +5,19 @@ from __future__ import annotations
 from typing import Sequence
 
 from agent_rl.domains.narrative import CompressedMemoryBlock, MemoryAtom, NarrativeEvent, NarrativeTaskState, StateChangeProposal
+from agent_rl.narrative_writing.longform_context import MemoryGovernancePolicy
 from agent_rl.narrative_writing.utils import new_id
 
 
 class SimpleNarrativeMemoryPolicy:
     """Promotes accepted proposals into events and compressed memory."""
 
+    def __init__(self, governance_policy: MemoryGovernancePolicy | None = None) -> None:
+        self.governance_policy = governance_policy or MemoryGovernancePolicy()
+
     def apply(self, state: NarrativeTaskState, changes: Sequence[StateChangeProposal]) -> NarrativeTaskState:
+        scores = self.governance_policy.score_new_memory(list(changes))
+        self.governance_policy.decay(state, amount=0.04)
         for change in changes:
             if change.update_type == "narrative_event":
                 state.events.append(
@@ -28,7 +34,7 @@ class SimpleNarrativeMemoryPolicy:
                     memory_type=change.update_type,
                     text=change.summary,
                     canonical=True,
-                    importance=0.6 + min(change.confidence, 1.0) * 0.4,
+                    importance=scores.get(change.change_id, 0.6 + min(change.confidence, 1.0) * 0.4),
                     freshness=1.0,
                     related_entities=list(change.related_entities),
                     state_version_no=state.state_version_no + 1,

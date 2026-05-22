@@ -8,7 +8,9 @@ from agent_rl.core import Action, Observation
 from agent_rl.domains.narrative import (
     ChapterBlueprint,
     ChapterPlan,
+    DraftBranch,
     DraftCandidate,
+    DraftRevisionCandidate,
     EvaluationReport,
     EvidencePack,
     NarrativeQuery,
@@ -23,9 +25,12 @@ from agent_rl.narrative_writing.policies import (
     CompositeNarrativeEvaluatorPolicy,
     CompositeNarrativeRetrievalPolicy,
     RuleBasedExtractorPolicy,
+    RuleBasedNarrativeRepairPolicy,
     RuleBasedPlanningPolicy,
     RuleBasedSourceAnalysisPolicy,
+    ScoreBasedBranchSelectionPolicy,
     SimpleNarrativeMemoryPolicy,
+    SQLiteFTSNarrativeRetrievalPolicy,
     TemplateNarrativeWriterPolicy,
 )
 from agent_rl.narrative_writing.ports import (
@@ -33,8 +38,12 @@ from agent_rl.narrative_writing.ports import (
     NarrativeExtractorPolicy,
     NarrativeContextPolicy,
     NarrativeAnalysisPolicy,
+    NarrativeBranchSelectionPolicy,
+    NarrativeEvaluationRepository,
     NarrativeMemoryPolicy,
+    NarrativeMemoryRepository,
     NarrativePlanningPolicy,
+    NarrativeRepairPolicy,
     NarrativeRetrievalPolicy,
     NarrativeRetrievalEvaluationPolicy,
     NarrativeWriterPolicy,
@@ -57,18 +66,31 @@ class NarrativeScenarioAdapter:
         writer_policy: NarrativeWriterPolicy | None = None,
         extractor_policy: NarrativeExtractorPolicy | None = None,
         evaluator_policy: NarrativeEvaluatorPolicy | None = None,
+        repair_policy: NarrativeRepairPolicy | None = None,
         memory_policy: NarrativeMemoryPolicy | None = None,
         context_policy: NarrativeContextPolicy | None = None,
+        branch_selection_policy: NarrativeBranchSelectionPolicy | None = None,
+        memory_repository: NarrativeMemoryRepository | None = None,
+        evaluation_repository: NarrativeEvaluationRepository | None = None,
     ) -> None:
         self.analysis_policy = analysis_policy or RuleBasedSourceAnalysisPolicy()
-        self.retrieval_policy = retrieval_policy or CompositeNarrativeRetrievalPolicy()
+        self.memory_repository = memory_repository
+        self.evaluation_repository = evaluation_repository
+        if retrieval_policy is not None:
+            self.retrieval_policy = retrieval_policy
+        elif memory_repository is not None:
+            self.retrieval_policy = SQLiteFTSNarrativeRetrievalPolicy(memory_repository)
+        else:
+            self.retrieval_policy = CompositeNarrativeRetrievalPolicy()
         self.retrieval_evaluation_policy = retrieval_evaluation_policy or BasicRetrievalEvaluationPolicy()
         self.planning_policy = planning_policy or RuleBasedPlanningPolicy()
         self.context_policy = context_policy or BudgetedNarrativeContextPolicy()
         self.writer_policy = writer_policy or TemplateNarrativeWriterPolicy()
         self.extractor_policy = extractor_policy or RuleBasedExtractorPolicy()
         self.evaluator_policy = evaluator_policy or CompositeNarrativeEvaluatorPolicy()
+        self.repair_policy = repair_policy or RuleBasedNarrativeRepairPolicy()
         self.memory_policy = memory_policy or SimpleNarrativeMemoryPolicy()
+        self.branch_selection_policy = branch_selection_policy or ScoreBasedBranchSelectionPolicy()
 
     def build_initial_state(self, request: AuthorRequest) -> NarrativeTaskState:
         return build_initial_state(request, self.analysis_policy)
@@ -202,7 +224,29 @@ class NarrativeScenarioAdapter:
     ) -> list[EvaluationReport]:
         reports = self.evaluator_policy.evaluate(state, draft, changes)
         state.reports = list(reports)
+        if self.evaluation_repository is not None:
+            self.evaluation_repository.save_reports(state.story_id, reports, run_id=state.task_id)
         return reports
+
+    def repair_draft(
+        self,
+        state: NarrativeTaskState,
+        draft: DraftCandidate,
+        reports: Sequence[EvaluationReport],
+        *,
+        attempt_no: int,
+    ) -> DraftRevisionCandidate:
+        revision = self.repair_policy.repair(state, draft, reports, attempt_no=attempt_no)
+        state.draft = revision.draft
+        return revision
+
+    def select_branch(self, branches: Sequence[DraftBranch], selected_branch_id: str = "") -> DraftBranch | None:
+        if selected_branch_id:
+            for branch in branches:
+                if branch.branch_id == selected_branch_id:
+                    return branch
+            return None
+        return self.branch_selection_policy.select_branch(branches)
 
     def commit_or_rollback(
         self,
@@ -216,6 +260,8 @@ class NarrativeScenarioAdapter:
             state.metadata["rollback_reason"] = [issue.summary for report in blocking for issue in report.issues]
             return False
         self.memory_policy.apply(state, changes)
+        if self.memory_repository is not None:
+            self.memory_repository.upsert_state_memory(state)
         state.metadata["commit_status"] = "committed"
         state.pending_changes = []
         return True

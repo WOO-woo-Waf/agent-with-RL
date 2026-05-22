@@ -127,3 +127,5 @@ def test_longform_target_uses_segment_generation() -> None:
     assert "merge_draft_segments" in action_names
     assert result.draft is not None
     assert result.draft.metadata["writer_policy"] == "SegmentedNarrativeWriter"
+    assert result.trajectory.outcome == "committed"
+    assert result.committed is True

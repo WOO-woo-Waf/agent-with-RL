@@ -74,6 +74,12 @@ def _globalns() -> dict[str, Any]:
     values.update(vars(narrative_domain))
     values.update(vars(core_concepts))
     values.update(vars(narrative_requests))
+    try:
+        from agent_rl.narrative_writing import react as narrative_react
+
+        values.update(vars(narrative_react))
+    except Exception:
+        pass
     return values
 
 

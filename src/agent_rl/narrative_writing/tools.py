@@ -11,6 +11,7 @@ from agent_rl.domains.narrative import NarrativeSourceAnalysis, NarrativeTaskSta
 from agent_rl.narrative_writing.bootstrap import build_author_constraints
 from agent_rl.narrative_writing.longform_context import DraftCompressionTool, LongformContextSelector
 from agent_rl.narrative_writing.persistence import FileNarrativeStateRepository
+from agent_rl.narrative_writing.ports import NarrativeStateRepository
 from agent_rl.narrative_writing.requests import AuthorRequest
 
 
@@ -29,7 +30,7 @@ class NarrativeToolResult:
 class LoadAnalysisTool:
     """Loads source analysis artifacts into a runnable NarrativeTaskState."""
 
-    def __init__(self, repository: FileNarrativeStateRepository | None = None) -> None:
+    def __init__(self, repository: NarrativeStateRepository | None = None) -> None:
         self.repository = repository or FileNarrativeStateRepository()
 
     def invoke(self, *, source_analysis_path: str | Path, request: AuthorRequest) -> tuple[NarrativeTaskState, NarrativeToolResult]:
@@ -85,7 +86,7 @@ class ScanWorkspaceTool:
 class SaveNarrativeArtifactsTool:
     """Persists state, workflow, trajectory, blueprint, draft, and run metadata."""
 
-    def __init__(self, repository: FileNarrativeStateRepository | None = None) -> None:
+    def __init__(self, repository: NarrativeStateRepository | None = None) -> None:
         self.repository = repository or FileNarrativeStateRepository()
 
     def invoke(self, *, state: NarrativeTaskState, workflow: Any = None, trajectory: Any = None, run_id: str = "") -> NarrativeToolResult:
@@ -98,6 +99,9 @@ class SaveNarrativeArtifactsTool:
             if getattr(workflow, "draft", None) is not None:
                 chapter_index = getattr(getattr(workflow, "proposed_blueprint", None), "chapter_index", None)
                 artifacts.append(str(self.repository.save_draft(state.story_id, workflow.draft, chapter_index=chapter_index)))
+            branches = list(getattr(workflow, "branches", []) or [])
+            if branches and hasattr(self.repository, "save_branches"):
+                artifacts.extend(str(path) for path in self.repository.save_branches(state.story_id, branches, run_id=run_id))
         if trajectory is not None:
             artifacts.append(str(self.repository.save_trajectory(state.story_id, trajectory, run_id=run_id)))
         return NarrativeToolResult(

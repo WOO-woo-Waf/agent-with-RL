@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from agent_rl.core import Trajectory
-from agent_rl.domains.narrative import ChapterBlueprint, DraftCandidate, NarrativeTaskState
+from agent_rl.domains.narrative import ChapterBlueprint, DraftBranch, DraftCandidate, NarrativeTaskState
 
 
 @dataclass(frozen=True)
@@ -27,13 +27,19 @@ class AuthorRequest:
     """
 
     request: str
+    session_id: str = ""
     story_id: str = "story-default"
     task_id: str = "task-default"
     references: tuple[ReferenceMaterial, ...] = ()
     writing_direction: str = ""
+    blueprint_feedback: str = ""
     constraints: tuple[str, ...] = ()
     target_chapter_index: int = 1
     confirm_plan: bool = False
+    branch_count: int = 1
+    selected_branch_id: str = ""
+    auto_repair: bool = True
+    max_repair_attempts: int = 1
     target_word_count: int = 1200
     analysis_path: str = ""
     state_snapshot_path: str = ""
@@ -61,5 +67,6 @@ class NarrativeRunResult:
     assistant_message: str = ""
     requires_confirmation: bool = False
     proposed_blueprint: ChapterBlueprint | None = None
+    branches: list[DraftBranch] = field(default_factory=list)
     draft: DraftCandidate | None = None
     committed: bool = False

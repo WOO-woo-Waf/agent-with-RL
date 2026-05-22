@@ -13,6 +13,7 @@ from typing import Any, Literal, Mapping
 
 Status = Literal["candidate", "confirmed", "contested", "deprecated"]
 Severity = Literal["info", "warning", "blocker"]
+AuthorDecisionType = Literal["confirm", "reject", "revise", "note", "preference", "select_branch"]
 
 
 @dataclass(frozen=True)
@@ -410,6 +411,60 @@ class AuthorConstraint:
 
 
 @dataclass
+class AuthorMessage:
+    """One author or assistant message in a long-running writing session."""
+
+    message_id: str
+    role: str
+    content: str
+    created_at: str = ""
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class AuthorDecision:
+    """Structured author decision extracted from conversation."""
+
+    decision_id: str
+    decision_type: AuthorDecisionType
+    summary: str
+    target_type: str = ""
+    target_id: str = ""
+    confirmed: bool = False
+    created_at: str = ""
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class AuthorPreferenceProfile:
+    """Long-term author preferences that should influence planning and writing."""
+
+    profile_id: str
+    story_id: str
+    style_preferences: list[str] = field(default_factory=list)
+    pacing_preferences: list[str] = field(default_factory=list)
+    dialogue_preferences: list[str] = field(default_factory=list)
+    taboo_patterns: list[str] = field(default_factory=list)
+    revision_preferences: list[str] = field(default_factory=list)
+    evidence_message_ids: list[str] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class AuthorConversation:
+    """Persistent author interaction state for one long-running session."""
+
+    conversation_id: str
+    session_id: str
+    story_id: str
+    task_id: str
+    messages: list[AuthorMessage] = field(default_factory=list)
+    decisions: list[AuthorDecision] = field(default_factory=list)
+    preference_profile: AuthorPreferenceProfile | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
 class ChapterBlueprintSegment:
     """Author-confirmable segment plan inside a chapter blueprint."""
 
@@ -443,6 +498,9 @@ class ChapterBlueprint:
     segments: list[ChapterBlueprintSegment] = field(default_factory=list)
     requires_author_confirmation: bool = True
     confirmed: bool = False
+    revision_no: int = 1
+    parent_blueprint_id: str = ""
+    revision_notes: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -453,11 +511,13 @@ class MemoryAtom:
     memory_type: str
     text: str
     canonical: bool = True
+    status: Status = "confirmed"
     importance: float = 0.0
     freshness: float = 0.0
     related_entities: list[str] = field(default_factory=list)
     source_span_ids: list[str] = field(default_factory=list)
     state_version_no: int | None = None
+    invalidation_reason: str = ""
 
 
 @dataclass
@@ -616,6 +676,52 @@ class DraftCandidate:
     planned_beat_ids: list[str] = field(default_factory=list)
     style_targets: list[str] = field(default_factory=list)
     continuity_notes: list[str] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class DraftRepairPlan:
+    """Structured repair intent derived from blocking evaluation issues."""
+
+    repair_id: str
+    source_draft_id: str
+    blocker_summaries: list[str] = field(default_factory=list)
+    repair_instructions: list[str] = field(default_factory=list)
+    attempt_no: int = 1
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class DraftRevisionCandidate:
+    """A revised draft plus traceable repair plan metadata."""
+
+    revision_id: str
+    source_draft_id: str
+    draft: DraftCandidate
+    repair_plan: DraftRepairPlan
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class BranchEvaluationReport:
+    """Compact branch-level score used before author branch selection."""
+
+    branch_id: str
+    score: float = 0.0
+    rationale: str = ""
+    report_ids: list[str] = field(default_factory=list)
+    metrics: dict[str, float] = field(default_factory=dict)
+
+
+@dataclass
+class DraftBranch:
+    """One candidate continuation branch before commit."""
+
+    branch_id: str
+    draft: DraftCandidate
+    label: str = ""
+    status: str = "candidate"
+    evaluation: BranchEvaluationReport | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
 

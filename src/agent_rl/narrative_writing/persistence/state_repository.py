@@ -8,8 +8,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from agent_rl.core.concepts import Trajectory
-from agent_rl.domains.narrative import ChapterBlueprint, DraftCandidate, NarrativeSourceAnalysis, NarrativeTaskState
+from agent_rl.core.concepts import Observation, Trajectory
+from agent_rl.domains.narrative import ChapterBlueprint, DraftBranch, DraftCandidate, NarrativeSourceAnalysis, NarrativeTaskState
 from agent_rl.narrative_writing.serialization import from_jsonable, to_jsonable
 
 
@@ -53,6 +53,15 @@ class FileNarrativeStateRepository:
         path.write_text(draft.content, encoding="utf-8")
         return path
 
+    def save_branches(self, story_id: str, branches: list[DraftBranch], *, run_id: str = "") -> list[Path]:
+        paths: list[Path] = []
+        branch_dir = self._story_dir(story_id) / "branches"
+        for branch in branches:
+            branch_path = branch_dir / f"{_safe_path_part(branch.branch_id)}{_suffix(run_id)}.json"
+            self._write_json(branch_path, {"saved_at": _utc_now(), "branch": to_jsonable(branch)})
+            paths.append(branch_path)
+        return paths
+
     def save_run_result(self, story_id: str, payload: dict[str, Any], *, run_id: str = "") -> Path:
         path = self._story_dir(story_id) / "run_results" / f"run-result{_suffix(run_id)}.json"
         self._write_json(path, {"saved_at": _utc_now(), **to_jsonable(payload)})
@@ -62,12 +71,54 @@ class FileNarrativeStateRepository:
         payload = json.loads(Path(path).read_text(encoding="utf-8"))
         return from_jsonable(NarrativeSourceAnalysis, payload)
 
+    def save_session_snapshot(
+        self,
+        *,
+        session_id: str,
+        state: NarrativeTaskState,
+        workflow: Any,
+        trajectory: Trajectory,
+        request: Any,
+        observation: Observation | None = None,
+        memory_snapshot: dict[str, Any] | None = None,
+    ) -> Path:
+        path = self._story_dir(state.story_id) / "sessions" / f"{_safe_path_part(session_id)}.json"
+        self._write_json(
+            path,
+            {
+                "schema_version": 1,
+                "saved_at": _utc_now(),
+                "session_id": session_id,
+                "story_id": state.story_id,
+                "task_id": state.task_id,
+                "request": to_jsonable(request),
+                "state": to_jsonable(state),
+                "workflow": to_jsonable(workflow),
+                "trajectory": to_jsonable(trajectory),
+                "observation": to_jsonable(observation) if observation is not None else None,
+                "memory_snapshot": to_jsonable(memory_snapshot or {}),
+            },
+        )
+        return path
+
+    def load_session_snapshot(self, session_id: str, *, story_id: str = "") -> dict[str, Any]:
+        if story_id:
+            path = self._story_dir(story_id) / "sessions" / f"{_safe_path_part(session_id)}.json"
+        else:
+            candidates = sorted(self.root.glob(f"*/sessions/{_safe_path_part(session_id)}.json"))
+            if not candidates:
+                raise FileNotFoundError(f"No session snapshot found for {session_id}")
+            path = candidates[-1]
+        return json.loads(path.read_text(encoding="utf-8"))
+
     def _story_dir(self, story_id: str) -> Path:
         return self.root / _safe_path_part(story_id or "story")
 
     def _write_json(self, path: Path, payload: Any) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+        temp_path = path.with_suffix(path.suffix + ".tmp")
+        temp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+        temp_path.replace(path)
 
     def _latest(self, directory: Path) -> Path:
         candidates = sorted(directory.glob("*.json"), key=lambda item: item.stat().st_mtime, reverse=True)

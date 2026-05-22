@@ -157,6 +157,51 @@ class DraftCompressionTool:
         }
 
 
+class MemoryGovernancePolicy:
+    """Applies lightweight importance, decay, and invalidation rules."""
+
+    def score_new_memory(self, changes: list[StateChangeProposal]) -> dict[str, float]:
+        scores: dict[str, float] = {}
+        for change in changes:
+            base = 0.45 + min(max(change.confidence, 0.0), 1.0) * 0.35
+            if change.update_type in {"character_state", "relationship", "world_fact", "plot_progress"}:
+                base += 0.15
+            if change.conflict_mark:
+                base -= 0.2
+            scores[change.change_id] = max(0.0, min(1.0, base))
+        return scores
+
+    def decay(self, state: NarrativeTaskState, *, amount: float = 0.08) -> int:
+        changed = 0
+        for atom in state.memory_atoms:
+            old = atom.freshness
+            atom.freshness = max(0.0, atom.freshness - amount)
+            if atom.freshness != old:
+                changed += 1
+        state.metadata["memory_decay"] = {
+            "amount": amount,
+            "changed_count": changed,
+        }
+        return changed
+
+    def invalidate_by_text(self, state: NarrativeTaskState, text: str, *, reason: str = "") -> list[str]:
+        needle = text.strip()
+        if not needle:
+            return []
+        invalidated: list[str] = []
+        for atom in state.memory_atoms:
+            if needle in atom.text and atom.status != "deprecated":
+                atom.canonical = False
+                atom.status = "deprecated"
+                atom.invalidation_reason = reason or f"invalidated by author text: {needle}"
+                invalidated.append(atom.memory_id)
+        if invalidated:
+            state.metadata.setdefault("memory_invalidations", []).append(
+                {"text": needle, "reason": reason, "memory_ids": list(invalidated)}
+            )
+        return invalidated
+
+
 def _near_candidates(state: NarrativeTaskState, query_terms: set[str]) -> list[MemoryCandidate]:
     candidates: list[MemoryCandidate] = []
     for chunk in state.source_chunks[-12:]:

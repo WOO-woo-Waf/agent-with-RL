@@ -138,6 +138,30 @@ Goal(
    - 最小字数要求
    - 输出路径或快照路径
 
+### Long-Running Session
+
+`NarrativeWritingAgent.run(...)` 适合一次性命令行或脚本调用。要做接近 Codex 的持续工作方式，应该使用 `NarrativeWritingSession`：
+
+```python
+session = NarrativeWritingSession(request)
+result = session.run_until_pause()
+
+if result.requires_confirmation:
+    session.apply_author_input(confirm_plan=True)
+    result = session.run_until_pause()
+```
+
+Session 会保留同一个 `NarrativeReActEnvironment`、`NarrativeWorkflowState`、`NarrativeTaskState`、`MemoryStore` 和 `Trajectory`，因此可以在作者确认、补充方向、后续修订时继续运行，而不是每次重新启动一个完整 pipeline。
+
+当前 Session 能处理的暂停点：
+
+- 缺少参考小说或写作方向：`needs_author_input`
+- 蓝图生成后等待作者确认：`needs_confirmation`
+- 正常提交：`committed`
+- 校验失败回滚：`rolled_back`
+
+后续要继续增强的方向是把 `repair_draft`、多轮作者反馈、分支草稿选择和长期后台任务也接入同一个 Session。
+
 ### Observation
 
 Observation 不是全文，也不是完整状态 dump，而是 Agent 当前决策所需的摘要。

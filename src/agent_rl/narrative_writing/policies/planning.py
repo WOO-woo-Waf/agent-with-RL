@@ -11,7 +11,8 @@ class RuleBasedPlanningPolicy:
     """Creates chapter-level plans from author direction and constraints."""
 
     def propose_blueprint(self, state: NarrativeTaskState, request: AuthorRequest) -> ChapterBlueprint:
-        direction_items = split_author_items(request.writing_direction)
+        planning_text = " ".join(part for part in (request.writing_direction, request.blueprint_feedback) if part.strip())
+        direction_items = split_author_items(planning_text)
         required = [item for item in direction_items if not is_negative_constraint(item)]
         forbidden = unique(
             item
@@ -21,7 +22,7 @@ class RuleBasedPlanningPolicy:
         related_threads = [thread.thread_id for thread in state.plot_threads[:3]]
         target_total_chars = max(int(request.target_word_count or 0), 0)
         segments = _build_segments(
-            required_beats=required or [request.writing_direction.strip()],
+            required_beats=required or [planning_text.strip()],
             forbidden_beats=list(forbidden),
             target_total_chars=target_total_chars,
             related_threads=related_threads,
@@ -29,9 +30,9 @@ class RuleBasedPlanningPolicy:
         return ChapterBlueprint(
             blueprint_id=new_id("blueprint"),
             chapter_index=request.target_chapter_index,
-            chapter_goal=request.writing_direction.strip(),
+            chapter_goal=planning_text.strip(),
             required_plot_threads=related_threads,
-            required_beats=required or [request.writing_direction.strip()],
+            required_beats=required or [planning_text.strip()],
             forbidden_beats=list(forbidden),
             expected_scene_count=max(1, len(segments)),
             pacing_target=_infer_pacing(request),
@@ -40,6 +41,7 @@ class RuleBasedPlanningPolicy:
             segments=segments,
             requires_author_confirmation=True,
             confirmed=request.confirm_plan,
+            revision_notes=[request.blueprint_feedback] if request.blueprint_feedback else [],
         )
 
     def build_chapter_plan(

@@ -8,10 +8,13 @@ from agent_rl.narrative_writing.policies.extraction import LLMNarrativeExtractor
 from agent_rl.narrative_writing.policies.interaction import BasicAuthorInteractionPolicy
 from agent_rl.narrative_writing.policies.memory import SimpleNarrativeMemoryPolicy
 from agent_rl.narrative_writing.policies.planning import RuleBasedPlanningPolicy
+from agent_rl.narrative_writing.policies.repair import RuleBasedNarrativeRepairPolicy, ScoreBasedBranchSelectionPolicy
 from agent_rl.narrative_writing.policies.retrieval import (
     CompositeNarrativeRetrievalPolicy,
     KeywordNarrativeRetrievalPolicy,
+    RAGVectorNarrativeRetrievalPolicy,
     RetrievalQuota,
+    SQLiteFTSNarrativeRetrievalPolicy,
 )
 from agent_rl.narrative_writing.policies.retrieval_evaluation import BasicRetrievalEvaluationPolicy
 from agent_rl.narrative_writing.policies.writing import LLMNarrativeWriterPolicy, TemplateNarrativeWriterPolicy
@@ -26,10 +29,14 @@ __all__ = [
     "LLMDeepNarrativeAnalysisPolicy",
     "LLMNarrativeExtractorPolicy",
     "LLMNarrativeWriterPolicy",
+    "RAGVectorNarrativeRetrievalPolicy",
     "RetrievalQuota",
+    "RuleBasedNarrativeRepairPolicy",
     "RuleBasedExtractorPolicy",
     "RuleBasedPlanningPolicy",
     "RuleBasedSourceAnalysisPolicy",
+    "ScoreBasedBranchSelectionPolicy",
+    "SQLiteFTSNarrativeRetrievalPolicy",
     "SimpleNarrativeMemoryPolicy",
     "TemplateNarrativeWriterPolicy",
 ]
