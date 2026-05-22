@@ -2,7 +2,7 @@
 
 from agent_rl.narrative_writing.agent import NarrativeWritingAgent
 from agent_rl.narrative_writing.agent import default_max_steps
-from agent_rl.narrative_writing.factory import build_narrative_writing_agent
+from agent_rl.narrative_writing.factory import build_narrative_scenario, build_narrative_writing_agent
 from agent_rl.narrative_writing.ingestion import (
     build_author_request_from_files,
     load_reference_directory,
@@ -51,6 +51,16 @@ from agent_rl.narrative_writing.tools import (
     ScanWorkspaceTool,
     build_state_from_analysis,
 )
+from agent_rl.narrative_writing.workbench import (
+    FileNarrativeOperatorSessionRepository,
+    NarrativeInteractiveWorkbench,
+    NarrativeOperatorSessionState,
+    NarrativeWorkbenchConfig,
+    OperatorMessage,
+    OperatorToolCall,
+    WorkbenchDecision,
+    WorkbenchOperatorPolicy,
+)
 
 __all__ = [
     "AuthorQuestion",
@@ -60,6 +70,7 @@ __all__ = [
     "FileNarrativeConversationRepository",
     "FileNarrativeEvaluationRepository",
     "FileNarrativeJobRepository",
+    "FileNarrativeOperatorSessionRepository",
     "FileNarrativeStateRepository",
     "SQLiteNarrativeMemoryRepository",
     "JsonBlobParser",
@@ -67,6 +78,8 @@ __all__ = [
     "LLMNarrativeExtractorPolicy",
     "LLMNarrativeWriterPolicy",
     "NarrativeRunResult",
+    "NarrativeInteractiveWorkbench",
+    "NarrativeOperatorSessionState",
     "NarrativeJob",
     "NarrativeJobRunner",
     "NarrativeRunGraph",
@@ -76,11 +89,14 @@ __all__ = [
     "NarrativeToolResult",
     "NarrativeWritingAgent",
     "NarrativeWritingSession",
+    "NarrativeWorkbenchConfig",
     "NarrativeWorkflowState",
     "NarrativeTaskNode",
     "NarrativeTaskResult",
     "OpenAICompatibleChatClient",
     "OpenAICompatibleConfig",
+    "OperatorMessage",
+    "OperatorToolCall",
     "PromptComposer",
     "PromptRegistry",
     "ReferenceMaterial",
@@ -91,10 +107,13 @@ __all__ = [
     "ScoreBasedBranchSelectionPolicy",
     "SQLiteFTSNarrativeRetrievalPolicy",
     "MemoryGovernancePolicy",
+    "WorkbenchDecision",
+    "WorkbenchOperatorPolicy",
     "LoadAnalysisTool",
     "SaveNarrativeArtifactsTool",
     "ScanWorkspaceTool",
     "build_author_request_from_files",
+    "build_narrative_scenario",
     "build_narrative_writing_agent",
     "build_state_from_analysis",
     "compose_system_prompt",

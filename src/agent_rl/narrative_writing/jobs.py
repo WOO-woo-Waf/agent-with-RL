@@ -25,6 +25,7 @@ from agent_rl.narrative_writing.ports import (
 )
 from agent_rl.narrative_writing.serialization import to_jsonable
 from agent_rl.narrative_writing.session import NarrativeWritingSession
+from agent_rl.narrative_writing.scenario import NarrativeScenarioAdapter
 from agent_rl.rag import RAGModelService
 
 
@@ -99,6 +100,7 @@ class NarrativeJobRunner:
         conversation_repository: NarrativeConversationRepository | None = None,
         memory_repository: NarrativeMemoryRepository | None = None,
         evaluation_repository: NarrativeEvaluationRepository | None = None,
+        scenario: NarrativeScenarioAdapter | None = None,
         rag_service: RAGModelService | None = None,
         auto_rag_index: bool = False,
         rag_collection_id: str = "narrative",
@@ -109,6 +111,7 @@ class NarrativeJobRunner:
         self.conversation_repository = conversation_repository or FileNarrativeConversationRepository()
         self.memory_repository = memory_repository or SQLiteNarrativeMemoryRepository()
         self.evaluation_repository = evaluation_repository or FileNarrativeEvaluationRepository()
+        self.scenario = scenario
         self.rag_service = rag_service
         self.auto_rag_index = auto_rag_index
         self.rag_collection_id = rag_collection_id
@@ -129,6 +132,7 @@ class NarrativeJobRunner:
             session = NarrativeWritingSession.resume(
                 job.session_id,
                 story_id=job.story_id,
+                scenario=self.scenario,
                 state_repository=self.state_repository,
                 conversation_repository=self.conversation_repository,
                 memory_repository=self.memory_repository,

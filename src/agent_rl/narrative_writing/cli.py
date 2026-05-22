@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from agent_rl.narrative_writing.factory import build_narrative_scenario
 from agent_rl.narrative_writing.jobs import FileNarrativeJobRepository, NarrativeJob, NarrativeJobRunner
 from agent_rl.narrative_writing.persistence import (
     FileNarrativeConversationRepository,
@@ -17,18 +18,25 @@ from agent_rl.narrative_writing.persistence import (
 from agent_rl.narrative_writing.requests import AuthorRequest, ReferenceMaterial
 from agent_rl.narrative_writing.session import NarrativeWritingSession
 from agent_rl.narrative_writing.serialization import to_jsonable
+from agent_rl.narrative_writing.workbench import NarrativeInteractiveWorkbench, NarrativeWorkbenchConfig
 from agent_rl.rag import RAGModelService, RAGServiceConfig
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
+    if args.command is None:
+        args.command = "workbench"
     state_repo = FileNarrativeStateRepository(args.state_root)
     conversation_repo = FileNarrativeConversationRepository(args.conversation_root)
     memory_repo = SQLiteNarrativeMemoryRepository(args.memory_db)
     evaluation_repo = FileNarrativeEvaluationRepository(args.evaluation_root)
     job_repo = FileNarrativeJobRepository(args.job_root)
     rag_service, auto_rag_index = _rag_service_for_auto_index(args)
+    scenario = _scenario_from_args(args, memory_repo=memory_repo, evaluation_repo=evaluation_repo)
+
+    if args.command in {"workbench", "chat", "interactive"}:
+        return NarrativeInteractiveWorkbench(_workbench_config_from_args(args)).run()
 
     if args.command == "enqueue-job":
         payload = _load_payload(args.payload_json)
@@ -46,12 +54,12 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "run-job":
-        job = _job_runner(job_repo, state_repo, conversation_repo, memory_repo, evaluation_repo, rag_service, args, auto_rag_index).run(args.job_id)
+        job = _job_runner(job_repo, state_repo, conversation_repo, memory_repo, evaluation_repo, rag_service, scenario, args, auto_rag_index).run(args.job_id)
         print(json.dumps(to_jsonable(job), ensure_ascii=False, indent=2, sort_keys=True))
         return 0
 
     if args.command == "run-next-job":
-        job = _job_runner(job_repo, state_repo, conversation_repo, memory_repo, evaluation_repo, rag_service, args, auto_rag_index).run_next()
+        job = _job_runner(job_repo, state_repo, conversation_repo, memory_repo, evaluation_repo, rag_service, scenario, args, auto_rag_index).run_next()
         print(json.dumps(to_jsonable(job) if job else {"status": "empty"}, ensure_ascii=False, indent=2, sort_keys=True))
         return 0
 
@@ -84,6 +92,7 @@ def main(argv: list[str] | None = None) -> int:
             memory_repository=memory_repo,
             evaluation_repository=evaluation_repo,
             rag_service=rag_service,
+            scenario=scenario,
             auto_rag_index=auto_rag_index,
             rag_collection_id=args.rag_collection_id,
             rag_index_batch_size=args.rag_index_batch_size,
@@ -96,6 +105,7 @@ def main(argv: list[str] | None = None) -> int:
     session = NarrativeWritingSession.resume(
         args.session_id,
         story_id=args.story_id,
+        scenario=scenario,
         state_repository=state_repo,
         conversation_repository=conversation_repo,
         memory_repository=memory_repo,
@@ -199,10 +209,21 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--memory-db", default="artifacts/narrative-memory/memory.sqlite3")
     parser.add_argument("--evaluation-root", default="artifacts/narrative-evaluations")
     parser.add_argument("--job-root", default="artifacts/narrative-jobs")
+    parser.add_argument("--operator-root", default="artifacts/narrative-operator-sessions")
+    parser.add_argument("--operator-session-id", default="")
+    parser.add_argument("--env-file", default="")
+    llm_group = parser.add_mutually_exclusive_group()
+    llm_group.add_argument("--use-llm", dest="use_llm", action="store_true", default=None)
+    llm_group.add_argument("--no-llm", dest="use_llm", action="store_false")
+    parser.add_argument("--strict-llm", action="store_true")
+    parser.add_argument("--no-llm-analysis", dest="use_llm_analysis", action="store_false", default=None)
+    parser.add_argument("--use-rag-vector", action="store_true")
     parser.add_argument("--auto-rag-index", action="store_true")
     parser.add_argument("--rag-collection-id", default="narrative")
     parser.add_argument("--rag-index-batch-size", type=int, default=None)
-    subparsers = parser.add_subparsers(dest="command", required=True)
+    subparsers = parser.add_subparsers(dest="command", required=False)
+
+    subparsers.add_parser("workbench", aliases=["chat", "interactive"])
 
     start = subparsers.add_parser("start")
     _session_identity_args(start, require_story=True)
@@ -333,6 +354,7 @@ def _job_runner(
     memory_repo: SQLiteNarrativeMemoryRepository,
     evaluation_repo: FileNarrativeEvaluationRepository,
     rag_service: RAGModelService | None,
+    scenario: Any,
     args: Any,
     auto_rag_index: bool,
 ) -> NarrativeJobRunner:
@@ -342,8 +364,49 @@ def _job_runner(
         conversation_repository=conversation_repo,
         memory_repository=memory_repo,
         evaluation_repository=evaluation_repo,
+        scenario=scenario,
         rag_service=rag_service,
         auto_rag_index=auto_rag_index,
+        rag_collection_id=args.rag_collection_id,
+        rag_index_batch_size=args.rag_index_batch_size,
+    )
+
+
+def _scenario_from_args(
+    args: Any,
+    *,
+    memory_repo: SQLiteNarrativeMemoryRepository,
+    evaluation_repo: FileNarrativeEvaluationRepository,
+) -> Any:
+    return build_narrative_scenario(
+        use_llm=args.use_llm,
+        use_llm_analysis=args.use_llm_analysis,
+        env_path=args.env_file or None,
+        fallback_to_local=not args.strict_llm,
+        persist_analysis=True,
+        analysis_repository_root=Path(args.state_root).parent / "narrative",
+        use_memory_repository=True,
+        memory_repository_path=memory_repo.path,
+        evaluation_repository_root=evaluation_repo.root,
+        use_rag_vector=args.use_rag_vector,
+        rag_collection_id=args.rag_collection_id,
+    )
+
+
+def _workbench_config_from_args(args: Any) -> NarrativeWorkbenchConfig:
+    return NarrativeWorkbenchConfig(
+        state_root=args.state_root,
+        conversation_root=args.conversation_root,
+        memory_db=args.memory_db,
+        evaluation_root=args.evaluation_root,
+        operator_root=args.operator_root,
+        operator_session_id=args.operator_session_id,
+        env_file=args.env_file,
+        use_llm=args.use_llm,
+        strict_llm=args.strict_llm,
+        use_llm_analysis=args.use_llm_analysis,
+        use_rag_vector=args.use_rag_vector,
+        auto_rag_index=args.auto_rag_index,
         rag_collection_id=args.rag_collection_id,
         rag_index_batch_size=args.rag_index_batch_size,
     )

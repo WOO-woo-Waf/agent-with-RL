@@ -38,6 +38,39 @@ def build_narrative_writing_agent(
 ) -> NarrativeWritingAgent:
     """Build a narrative agent with optional LLM analysis/writer/extractor policies."""
 
+    return NarrativeWritingAgent(
+        scenario=build_narrative_scenario(
+            use_llm=use_llm,
+            use_llm_analysis=use_llm_analysis,
+            env_path=env_path,
+            fallback_to_local=fallback_to_local,
+            persist_analysis=persist_analysis,
+            analysis_repository_root=analysis_repository_root,
+            use_memory_repository=use_memory_repository,
+            memory_repository_path=memory_repository_path,
+            evaluation_repository_root=evaluation_repository_root,
+            use_rag_vector=use_rag_vector,
+            rag_collection_id=rag_collection_id,
+        )
+    )
+
+
+def build_narrative_scenario(
+    *,
+    use_llm: bool | None = None,
+    use_llm_analysis: bool | None = None,
+    env_path: str | Path | None = None,
+    fallback_to_local: bool = True,
+    persist_analysis: bool = True,
+    analysis_repository_root: str | Path | None = None,
+    use_memory_repository: bool = False,
+    memory_repository_path: str | Path | None = None,
+    evaluation_repository_root: str | Path | None = None,
+    use_rag_vector: bool = False,
+    rag_collection_id: str = "narrative",
+) -> NarrativeScenarioAdapter:
+    """Build the narrative scenario used by sessions, jobs, and agents."""
+
     load_project_env(env_path, start=Path.cwd())
     memory_repository = (
         SQLiteNarrativeMemoryRepository(memory_repository_path or Path("artifacts") / "narrative-memory" / "memory.sqlite3")
@@ -63,14 +96,10 @@ def build_narrative_writing_agent(
             raise RuntimeError("LLM is requested but LLM_API_BASE, LLM_API_KEY, or LLM_MODEL is missing.")
         enable_llm = False
     if not enable_llm:
-        return NarrativeWritingAgent(
-            scenario=NarrativeScenarioAdapter(
-                memory_repository=memory_repository,
-                evaluation_repository=evaluation_repository,
-                retrieval_policy=retrieval_policy,
-            )
-            if memory_repository is not None or evaluation_repository is not None or retrieval_policy is not None
-            else None
+        return NarrativeScenarioAdapter(
+            memory_repository=memory_repository,
+            evaluation_repository=evaluation_repository,
+            retrieval_policy=retrieval_policy,
         )
 
     client = OpenAICompatibleChatClient(config)
@@ -88,4 +117,4 @@ def build_narrative_writing_agent(
         writer_policy=LLMNarrativeWriterPolicy(client),
         extractor_policy=LLMNarrativeExtractorPolicy(client),
     )
-    return NarrativeWritingAgent(scenario=scenario)
+    return scenario

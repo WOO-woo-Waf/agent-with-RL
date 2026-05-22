@@ -36,3 +36,11 @@ cache/
 *.sqlite3
 *.zip
 *.tar.gz
+
+data/
+downloads/
+cache/
+*.db
+*.sqlite3
+*.zip
+*.tar.gz    
